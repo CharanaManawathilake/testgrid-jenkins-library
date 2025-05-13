@@ -838,7 +838,9 @@ pipeline {
                                                         --set git_user_name="${GIT_USERNAME}" \
                                                         --set git_user_password="${GIT_PASSWORD}" \
                                                         --set git_repo="${productRepository}" \
-                                                        --set git_branch="${productTestBranch}"
+                                                        --set git_branch="${productTestBranch}" \
+                                                        --set aws_s3_access_key="${AWS_ACCESS_KEY_ID}" \
+                                                        --set aws_s3_secret_key="${AWS_SECRET_ACCESS_KEY}"
 
                                                     # Wait for the test pod to be running
                                                     kubectl wait --for=condition=ready --timeout=300s pod --selector=app=test-runner -n ${namespace}
