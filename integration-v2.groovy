@@ -715,8 +715,6 @@ pipeline {
                                                         --set wso2.apim.configurations.security.truststore.password="wso2carbon" \
                                                         --set wso2.deployment.resources.requests.cpu="1000m" \
                                                         --set wso2.apim.configurations.km.serviceUrl="apim-acp-wso2am-acp-service" \
-                                                        --set wso2.apim.configurations.throttling.serviceUrl="apim-tm-wso2am-tm-service" \
-                                                        --set wso2.apim.configurations.throttling.urls="{apim-tm-wso2am-tm-1-service,apim-tm-wso2am-tm-2-service}" \
                                                         --set wso2.apim.configurations.eventhub.enabled=true \
                                                         --set wso2.apim.configurations.eventhub.serviceUrl="apim-acp-wso2am-acp-service" \
                                                         --set wso2.apim.configurations.eventhub.urls="{apim-acp-wso2am-acp-1-service,apim-acp-wso2am-acp-2-service}" \
