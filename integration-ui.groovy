@@ -719,8 +719,6 @@ pipeline {
                                                         --set wso2.apim.configurations.eventhub.enabled=true \
                                                         --set wso2.apim.configurations.eventhub.serviceUrl="apim-acp-wso2am-acp-service" \
                                                         --set wso2.apim.configurations.eventhub.urls="{apim-acp-wso2am-acp-1-service,apim-acp-wso2am-acp-2-service}" \
-                                                        --set wso2.deployment.replicas=1 \
-                                                        --set wso2.deployment.minReplicas=1 \
                                                         --set wso2.deployment.image.registry="${dockerRegistrySafe}" \
                                                         --set wso2.deployment.image.repository="${project}-wso2am-tm:${dbEngineNameSafe}-latest" \
                                                         --set wso2.deployment.image.digest=${wso2amTmImageDigest} \
