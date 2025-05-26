@@ -773,8 +773,8 @@ pipeline {
                                                         --set wso2.apim.configurations.databases.shared_db.url="jdbc:${dbEngineList[dbEngineNameSafe].dbType}://${endpoint}:${dbPort}/shared_db?useSSL=false" \
                                                         --set wso2.apim.configurations.databases.shared_db.username="${dbUser}" \
                                                         --set wso2.apim.configurations.databases.shared_db.password="${dbPassword}" \
-                                                        --set wso2.deployment.replicas=6 \
-                                                        --set wso2.deployment.minReplicas=2
+                                                        --set wso2.deployment.replicas=12 \
+                                                        --set wso2.deployment.minReplicas=5
                                                     
                                                     # Wait for the deployment to be ready
                                                     kubectl wait --for=condition=ready --timeout=300s pod -l deployment=apim-universal-gw-wso2am-universal-gw -n ${namespace}
