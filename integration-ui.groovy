@@ -110,7 +110,7 @@ def createDeploymentPatterns(String project, String product, String productVersi
             dbEngines: dbEngines,
             dbEnginesJson: dbEnginesJson,
             directory: deploymentDirName,
-            eksDesiredSize: 6*dbEngines.size(),
+            eksDesiredSize: 5*dbEngines.size(),
         ]
         deploymentPatterns.add(deploymentPattern)
     }
@@ -714,8 +714,7 @@ pipeline {
                                                         --set wso2.apim.configurations.security.keystores.internal.password="wso2carbon" \
                                                         --set wso2.apim.configurations.security.keystores.internal.keyPassword="wso2carbon" \
                                                         --set wso2.apim.configurations.security.truststore.password="wso2carbon" \
-                                                        --set wso2.deployment.resources.limits.cpu="5000m" \
-                                                        --set wso2.deployment.resources.limits.memory="8Gi" \
+                                                        --set wso2.deployment.resources.requests.cpu="1000m" \
                                                         --set wso2.apim.configurations.km.serviceUrl="apim-acp-wso2am-acp-service" \
                                                         --set wso2.apim.configurations.eventhub.enabled=true \
                                                         --set wso2.apim.configurations.eventhub.serviceUrl="apim-acp-wso2am-acp-service" \
@@ -773,8 +772,8 @@ pipeline {
                                                         --set wso2.apim.configurations.databases.shared_db.url="jdbc:${dbEngineList[dbEngineNameSafe].dbType}://${endpoint}:${dbPort}/shared_db?useSSL=false" \
                                                         --set wso2.apim.configurations.databases.shared_db.username="${dbUser}" \
                                                         --set wso2.apim.configurations.databases.shared_db.password="${dbPassword}" \
-                                                        --set wso2.deployment.replicas=6 \
-                                                        --set wso2.deployment.minReplicas=2
+                                                        --set wso2.deployment.replicas=1 \
+                                                        --set wso2.deployment.minReplicas=1
                                                     
                                                     # Wait for the deployment to be ready
                                                     kubectl wait --for=condition=ready --timeout=300s pod -l deployment=apim-universal-gw-wso2am-universal-gw -n ${namespace}
