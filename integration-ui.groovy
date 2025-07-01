@@ -110,7 +110,7 @@ def createDeploymentPatterns(String project, String product, String productVersi
             dbEngines: dbEngines,
             dbEnginesJson: dbEnginesJson,
             directory: deploymentDirName,
-            eksDesiredSize: 5*dbEngines.size(),
+            eksDesiredSize: 6*dbEngines.size(),
         ]
         deploymentPatterns.add(deploymentPattern)
     }
