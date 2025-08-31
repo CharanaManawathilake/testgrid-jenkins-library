@@ -36,7 +36,7 @@ Boolean use_staging = params.use_staging
 // Default values
 String wso2_product_full_name = "${project}-${wso2_product}"
 String dockerDirectory = "docker"
-String dockerRepoBranch = "master"
+String dockerRepoBranch = "4.5.x"
 String dockerRepoUrl = "https://github.com/wso2/docker-apim.git"
 // Git
 String githubCredentialId = "WSO2_GITHUB_TOKEN"
