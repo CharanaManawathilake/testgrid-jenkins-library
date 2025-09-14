@@ -110,7 +110,7 @@ def createDeploymentPatterns(String project, String product, String productVersi
             dbEngines: dbEngines,
             dbEnginesJson: dbEnginesJson,
             directory: deploymentDirName,
-            eksDesiredSize: 5*dbEngines.size(),
+            eksDesiredSize: 6*dbEngines.size(),
         ]
         deploymentPatterns.add(deploymentPattern)
     }
@@ -716,13 +716,9 @@ pipeline {
                                                         --set wso2.apim.configurations.security.truststore.password="wso2carbon" \
                                                         --set wso2.deployment.resources.requests.cpu="1000m" \
                                                         --set wso2.apim.configurations.km.serviceUrl="apim-acp-wso2am-acp-service" \
-                                                        --set wso2.apim.configurations.throttling.serviceUrl="apim-tm-wso2am-tm-service" \
-                                                        --set wso2.apim.configurations.throttling.urls="{apim-tm-wso2am-tm-1-service,apim-tm-wso2am-tm-2-service}" \
                                                         --set wso2.apim.configurations.eventhub.enabled=true \
                                                         --set wso2.apim.configurations.eventhub.serviceUrl="apim-acp-wso2am-acp-service" \
                                                         --set wso2.apim.configurations.eventhub.urls="{apim-acp-wso2am-acp-1-service,apim-acp-wso2am-acp-2-service}" \
-                                                        --set wso2.deployment.replicas=1 \
-                                                        --set wso2.deployment.minReplicas=1 \
                                                         --set wso2.deployment.image.registry="${dockerRegistrySafe}" \
                                                         --set wso2.deployment.image.repository="${project}-wso2am-tm:${dbEngineNameSafe}-latest" \
                                                         --set wso2.deployment.image.digest=${wso2amTmImageDigest} \
@@ -839,7 +835,9 @@ pipeline {
                                                         --set git_user_name="${GIT_USERNAME}" \
                                                         --set git_user_password="${GIT_PASSWORD}" \
                                                         --set git_repo="${productRepository}" \
-                                                        --set git_branch="${productTestBranch}"
+                                                        --set git_branch="${productTestBranch}" \
+                                                        --set aws_s3_access_key="${AWS_ACCESS_KEY_ID}" \
+                                                        --set aws_s3_secret_key="${AWS_SECRET_ACCESS_KEY}"
 
                                                     # Wait for the test pod to be running
                                                     kubectl wait --for=condition=ready --timeout=300s pod --selector=app=test-runner -n ${namespace}
