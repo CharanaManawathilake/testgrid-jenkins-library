@@ -586,6 +586,7 @@ pipeline {
                                                     aws s3 cp --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip .
                                                     unzip ${product}-${productVersion}.zip -d ./${apimPackDirectory}
                                                     ls -la ./${apimPackDirectory}/${product}-${productVersion}/
+                                                    pwd
                                                 """
 
 
