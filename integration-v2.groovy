@@ -586,7 +586,6 @@ pipeline {
                                                     aws s3 cp --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip .
                                                     unzip ${product}-${productVersion}.zip -d ./${apimPackDirectory}
                                                     ls -la ./${apimPackDirectory}/${product}-${productVersion}/
-                                                    pwd
                                                 """
 
 
@@ -608,11 +607,8 @@ pipeline {
                                                     # Create a namespace for the deployment
                                                     kubectl create namespace ${namespace} || echo "Namespace ${namespace} already exists."
 
-                                                    aws s3 cp --quiet s3://${tfS3Bucket}/tools/client-truststore.jks .
-                                                    aws s3 cp --quiet s3://${tfS3Bucket}/tools/wso2carbon.jks .
-
                                                     # Create apim-keystore-secret
-                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${apimPackDirectory}/${product}-${productVersion}/resources/security/wso2carbon.jks --from-file=${pwd}/${apimPackDirectory}/${product}-${productVersion}/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
+                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/resources/security/wso2carbon.jks --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
                                                 """
                                                 println "Namespace created: ${namespace}"
 
@@ -631,7 +627,7 @@ pipeline {
                                                 sleep 60
 
                                                 // Execute DB scripts
-                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${apimPackDirectory}/${product}-${productVersion}")
+                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}")
 
                                                 String helmChartPath = "${pwd}/${helmDirectory}"
                                                 // Install the product using Helm
