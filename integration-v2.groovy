@@ -585,7 +585,7 @@ pipeline {
                                                 sh """
                                                     aws s3 cp --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip .
                                                     unzip ${product}-${productVersion}.zip -d ./${apimPackDirectory}
-                                                    ls -la ./${apimPackDirectory}/
+                                                    ls -la ./${apimPackDirectory}/${product}-${productVersion}/
                                                 """
 
 
@@ -611,7 +611,7 @@ pipeline {
                                                     aws s3 cp --quiet s3://${tfS3Bucket}/tools/wso2carbon.jks .
 
                                                     # Create apim-keystore-secret
-                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${apimPackDirectory}/resources/security/wso2carbon.jks --from-file=${pwd}/${apimPackDirectory}/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
+                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${apimPackDirectory}/${product}-${productVersion}/resources/security/wso2carbon.jks --from-file=${pwd}/${apimPackDirectory}/${product}-${productVersion}/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
                                                 """
                                                 println "Namespace created: ${namespace}"
 
@@ -630,7 +630,7 @@ pipeline {
                                                 sleep 60
 
                                                 // Execute DB scripts
-                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${apimPackDirectory}")
+                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${apimPackDirectory}/${product}-${productVersion}")
 
                                                 String helmChartPath = "${pwd}/${helmDirectory}"
                                                 // Install the product using Helm
