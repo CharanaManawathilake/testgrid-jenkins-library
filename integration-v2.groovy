@@ -583,7 +583,8 @@ pipeline {
                                             dir("${patternDirSafe}") {
                                                 // Copy APIM pack from S3 bucket
                                                 sh """
-                                                    aws s3 sync --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip ./${apimPackDirectory}/ --exact-timestamps
+                                                    aws s3 cp --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip . --exact-timestamps
+                                                    unzip ${product}-${productVersion}.zip -d ./${apimPackDirectory}
                                                     ls -la ./${apimPackDirectory}/
                                                 """
 
