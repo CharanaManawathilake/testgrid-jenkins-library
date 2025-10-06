@@ -36,6 +36,7 @@ String tfS3region = params.tfS3region
 String awsCred = params.awsCred
 String dbPassword = params.dbPassword
 String project = params.project?: "wso2"
+String apimPackS3Bucket = params.apimPackS3Bucket
 Boolean onlyDestroyResources = params.onlyDestroyResources
 Boolean destroyResources = params.destroyResources
 Boolean skipTfApply = params.skipTfApply
@@ -49,7 +50,7 @@ String hostName = ""
 String dbUser = "wso2carbon"
 // Helm repository details
 String helmRepoUrl = "https://github.com/wso2/helm-apim.git"
-String helmRepoBranch = "main"
+String helmRepoBranch = "4.5.x"
 String helmDirectory = "helm-apim"
 // APIM Test Integration repository details
 String apimIntgRepoUrl = "https://github.com/kavindasr/apim-test-integration.git"
@@ -58,11 +59,12 @@ String apimIntgDirectory = "apim-test-integration"
 String tfDirectory = "terraform"
 String tfEnvironment = "dev"
 String logsDirectory = "logs"
+String apimPackDirectory = "wso2am"
 
 String githubCredentialId = "WSO2_GITHUB_TOKEN"
 def dbEngineList = [
     "mysql": [
-        version: "5.7",
+        version: "8.0.37",
         dbDriver: "com.mysql.cj.jdbc.Driver",
         driverUrl: "https://repo1.maven.org/maven2/mysql/mysql-connector-java/8.0.29/mysql-connector-java-8.0.29.jar",
         dbType: "mysql",
@@ -274,22 +276,6 @@ def installDBClients() {
     }
 }
 
-def installNewman() {
-    def version = sh(script: 'newman --version || echo "NOT_INSTALLED"', returnStdout: true).trim()
-    if (version == 'NOT_INSTALLED') {
-        println "Newman not found. Installing..."
-        sh """
-            # Install newman globally using npm
-            npm install -g newman
-            
-            # Verify newman installation
-            newman --version
-        """
-    } else {
-        println "Newman is already installed. Version: ${version}"
-    }
-}
-
 @NonCPS
 def parseJson(String jsonString) {
     return new groovy.json.JsonSlurper().parseText(jsonString)
@@ -352,8 +338,6 @@ pipeline {
                     installHelm()
                     // Install database client tools
                     installDBClients()
-                    // Install Newman if not already installed
-                    // installNewman()
                 }
             }
         }
@@ -598,6 +582,13 @@ pipeline {
                                             """
 
                                             dir("${patternDirSafe}") {
+                                                // Copy APIM pack from S3 bucket
+                                                sh """
+                                                    aws s3 sync --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip ./${apimPackDirectory}/ --exact-timestamps
+                                                    ls -la ./${apimPackDirectory}/
+                                                """
+
+
                                                 def dbWriterEndpointsJson = sh(script: "terraform output -json | jq -r '.database_writer_endpoints.value'", returnStdout: true).trim()
                                                 def dbWriterEndpoints = new groovy.json.JsonSlurperClassic().parseText(dbWriterEndpointsJson)
                                                 if (!dbWriterEndpoints) {
@@ -620,7 +611,7 @@ pipeline {
                                                     aws s3 cp --quiet s3://${tfS3Bucket}/tools/wso2carbon.jks .
 
                                                     # Create apim-keystore-secret
-                                                    kubectl create secret generic apim-keystore-secret --from-file=wso2carbon.jks --from-file=client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
+                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${apimPackDirectory}/resources/security/wso2carbon.jks --from-file=${pwd}/${apimPackDirectory}/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
                                                 """
                                                 println "Namespace created: ${namespace}"
 
@@ -639,7 +630,7 @@ pipeline {
                                                 sleep 60
 
                                                 // Execute DB scripts
-                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${apimIntgDirectory}")
+                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${apimPackDirectory}")
 
                                                 String helmChartPath = "${pwd}/${helmDirectory}"
                                                 // Install the product using Helm
