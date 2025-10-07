@@ -608,7 +608,7 @@ pipeline {
                                                     kubectl create namespace ${namespace} || echo "Namespace ${namespace} already exists."
 
                                                     # Create apim-keystore-secret
-                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/resources/security/wso2carbon.jks --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
+                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/wso2carbon.jks --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
                                                 """
                                                 println "Namespace created: ${namespace}"
 
