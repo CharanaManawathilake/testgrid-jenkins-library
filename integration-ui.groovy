@@ -1,22 +1,21 @@
 #!groovy
 /*
-* Copyright (c) 2025 WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
-*
-* WSO2 Inc. licenses this file to you under the Apache License,
-* Version 2.0 (the "License"); you may not use this file except
-* in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing,
-* software distributed under the License is distributed on an
-* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-* KIND, either express or implied.  See the License for the
-* specific language governing permissions and limitations
-* under the License.
-*
-*/
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 import groovy.json.JsonSlurperClassic 
 
@@ -50,7 +49,7 @@ String hostName = ""
 String dbUser = "wso2carbon"
 // Helm repository details
 String helmRepoUrl = "https://github.com/wso2/helm-apim.git"
-String helmRepoBranch = "main"
+String helmRepoBranch = "4.5.x"
 String helmDirectory = "helm-apim"
 // APIM Test Integration repository details
 String apimIntgRepoUrl = "https://github.com/kavindasr/apim-test-integration.git"
@@ -59,11 +58,12 @@ String apimIntgDirectory = "apim-test-integration"
 String tfDirectory = "terraform"
 String tfEnvironment = "dev"
 String logsDirectory = "logs"
+String apimPackDirectory = "wso2am"
 
 String githubCredentialId = "WSO2_GITHUB_TOKEN"
 def dbEngineList = [
     "mysql": [
-        version: "5.7",
+        version: "8.0.37",
         dbDriver: "com.mysql.cj.jdbc.Driver",
         driverUrl: "https://repo1.maven.org/maven2/mysql/mysql-connector-java/8.0.29/mysql-connector-java-8.0.29.jar",
         dbType: "mysql",
@@ -275,22 +275,6 @@ def installDBClients() {
     }
 }
 
-def installNewman() {
-    def version = sh(script: 'newman --version || echo "NOT_INSTALLED"', returnStdout: true).trim()
-    if (version == 'NOT_INSTALLED') {
-        println "Newman not found. Installing..."
-        sh """
-            # Install newman globally using npm
-            npm install -g newman
-            
-            # Verify newman installation
-            newman --version
-        """
-    } else {
-        println "Newman is already installed. Version: ${version}"
-    }
-}
-
 @NonCPS
 def parseJson(String jsonString) {
     return new groovy.json.JsonSlurper().parseText(jsonString)
@@ -353,8 +337,6 @@ pipeline {
                     installHelm()
                     // Install database client tools
                     installDBClients()
-                    // Install Newman if not already installed
-                    // installNewman()
                 }
             }
         }
@@ -599,6 +581,14 @@ pipeline {
                                             """
 
                                             dir("${patternDirSafe}") {
+                                                // Copy APIM pack from S3 bucket
+                                                sh """
+                                                    aws s3 cp --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip .
+                                                    unzip ${product}-${productVersion}.zip -d ./${apimPackDirectory}
+                                                    ls -la ./${apimPackDirectory}/${product}-${productVersion}/
+                                                """
+
+
                                                 def dbWriterEndpointsJson = sh(script: "terraform output -json | jq -r '.database_writer_endpoints.value'", returnStdout: true).trim()
                                                 def dbWriterEndpoints = new groovy.json.JsonSlurperClassic().parseText(dbWriterEndpointsJson)
                                                 if (!dbWriterEndpoints) {
@@ -617,11 +607,8 @@ pipeline {
                                                     # Create a namespace for the deployment
                                                     kubectl create namespace ${namespace} || echo "Namespace ${namespace} already exists."
 
-                                                    aws s3 cp --quiet s3://${tfS3Bucket}/tools/client-truststore.jks .
-                                                    aws s3 cp --quiet s3://${tfS3Bucket}/tools/wso2carbon.jks .
-
                                                     # Create apim-keystore-secret
-                                                    kubectl create secret generic apim-keystore-secret --from-file=wso2carbon.jks --from-file=client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
+                                                    kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/wso2carbon.jks --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
                                                 """
                                                 println "Namespace created: ${namespace}"
 
@@ -640,7 +627,7 @@ pipeline {
                                                 sleep 60
 
                                                 // Execute DB scripts
-                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${apimIntgDirectory}")
+                                                executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}")
 
                                                 String helmChartPath = "${pwd}/${helmDirectory}"
                                                 // Install the product using Helm
@@ -801,7 +788,7 @@ pipeline {
                                             ],
                                             [
                                                 $class: 'UsernamePasswordMultiBinding',
-                                                credentialsId: 'ksr-git',
+                                                credentialsId: "${githubCredentialId}",
                                                 usernameVariable: 'GIT_USERNAME',
                                                 passwordVariable: 'GIT_PASSWORD'
                                             ]
@@ -829,6 +816,7 @@ pipeline {
                                                     # Run tests
                                                     helm install apim-test ./kubernetes/cypress \
                                                         --namespace ${namespace} \
+                                                        --set gw_hostname="gw-${dbEngineNameSafe}.wso2.com" \
                                                         --set host="am-${dbEngineNameSafe}.wso2.com" \
                                                         --set host_ip="${hostIP}" \
                                                         --set git_user_name="${GIT_USERNAME}" \
@@ -920,6 +908,9 @@ pipeline {
                     echo "Workspace cleanup failed: ${e.message}"
                     currentBuild.result = 'FAILURE'
                 } finally {
+                    if (!onlyDestroyResources && !skipTests) {
+                        archiveArtifacts artifacts: "${logsDirectory}/**/*.*", fingerprint: true
+                    }
                     // Clean up the workspace
                     cleanWs()
                 }
