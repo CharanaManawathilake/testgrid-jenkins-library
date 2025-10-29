@@ -1,3 +1,4 @@
+#!groovy
 /*
  * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com).
  *
@@ -15,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#!groovy
 
 // Input parameters
 String project = params.project
