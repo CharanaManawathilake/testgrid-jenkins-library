@@ -36,12 +36,14 @@ String tfS3region = params.tfS3region
 String awsCred = params.awsCred
 String dbPassword = params.dbPassword
 String project = params.project?: "wso2"
+String dockerRepoBranch = params.dockerRepoBranch ?: "4.5.x"
+String helmRepoBranch = params.helmRepoBranch ?: "4.5.x"
 Boolean onlyDestroyResources = params.onlyDestroyResources
 Boolean destroyResources = params.destroyResources
 Boolean skipTfApply = params.skipTfApply
 Boolean skipDockerBuild = params.skipDockerBuild
 Boolean skipTests = params.skipTests
-Boolean skipUpdate = params.skipUpdate ?: false 
+Boolean skipUpdate = params.skipUpdate ?: false
 
 // Default values
 def deploymentPatterns = []
@@ -50,7 +52,6 @@ String hostName = ""
 String dbUser = "wso2carbon"
 // Helm repository details
 String helmRepoUrl = "https://github.com/wso2/helm-apim.git"
-String helmRepoBranch = "4.5.x"
 String helmDirectory = "helm-apim"
 // APIM Test Integration repository details
 String apimIntgRepoUrl = "https://github.com/kavindasr/apim-test-integration.git"
@@ -170,6 +171,7 @@ def buildDockerImage(String project, String product, String productVersion, Stri
             [$class: 'StringParameterValue', name: 'docker_registry_username', value: dockerRegistryUsername],
             [$class: 'PasswordParameterValue', name: 'docker_registry_password', value: hudson.util.Secret.fromString(dockerRegistryPassword)],
             [$class: 'StringParameterValue', name: 'db_driver_url', value: dbDriverUrl],
+            [$class: 'StringParameterValue', name: 'docker_apim_branch', value: dockerRepoBranch],
             [$class: 'BooleanParameterValue', name: 'use_staging', value: useStaging],
             [$class: 'BooleanParameterValue', name: 'skip_update', value: skipUpdate
         ]
