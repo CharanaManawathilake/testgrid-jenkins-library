@@ -41,6 +41,7 @@ Boolean destroyResources = params.destroyResources
 Boolean skipTfApply = params.skipTfApply
 Boolean skipDockerBuild = params.skipDockerBuild
 Boolean skipTests = params.skipTests
+Boolean skipUpdate = params.skipUpdate ?: false 
 
 // Default values
 def deploymentPatterns = []
@@ -153,7 +154,7 @@ def executeDBScripts(String dbEngine, String dbEndpoint, String dbUser, String d
 }
 
 def buildDockerImage(String project, String product, String productVersion, String os, String updateLevel, String tag, String dbDriverUrl, 
-    String dockerRegistry, String dockerRegistryUsername, String dockerRegistryPassword, Boolean useStaging) {
+    String dockerRegistry, String dockerRegistryUsername, String dockerRegistryPassword, Boolean useStaging, Boolean skipUpdate) {
     
     println "Building Docker image for ${product} ${productVersion} on ${os} with update level ${updateLevel} and tag ${tag}..."
     try {
@@ -170,6 +171,7 @@ def buildDockerImage(String project, String product, String productVersion, Stri
             [$class: 'PasswordParameterValue', name: 'docker_registry_password', value: hudson.util.Secret.fromString(dockerRegistryPassword)],
             [$class: 'StringParameterValue', name: 'db_driver_url', value: dbDriverUrl],
             [$class: 'BooleanParameterValue', name: 'use_staging', value: useStaging],
+            [$class: 'BooleanParameterValue', name: 'skip_update', value: skipUpdate],
         ]
         
         // Invoke the downstream build job
@@ -519,13 +521,13 @@ pipeline {
                             def dockerRegistryPassword = pattern.dockerRegistry.password
                             
                             parallelBuilds["Build ${currentOs}-${db} wso2am-acp image"] = {
-                                buildDockerImage(project, "wso2am-acp", productVersion, currentOs, acpUpdateLevel, "${db}-latest", dbDriverUrl, dockerRegistry, dockerRegistryUsername, dockerRegistryPassword, useStaging)
+                                buildDockerImage(project, "wso2am-acp", productVersion, currentOs, acpUpdateLevel, "${db}-latest", dbDriverUrl, dockerRegistry, dockerRegistryUsername, dockerRegistryPassword, useStaging, skipUpdate)
                             }
                             parallelBuilds["Build ${currentOs}-${db} wso2am-tm image"] = {
-                                buildDockerImage(project, "wso2am-tm", productVersion, currentOs, tmUpdateLevel, "${db}-latest", dbDriverUrl, dockerRegistry, dockerRegistryUsername, dockerRegistryPassword, useStaging)
+                                buildDockerImage(project, "wso2am-tm", productVersion, currentOs, tmUpdateLevel, "${db}-latest", dbDriverUrl, dockerRegistry, dockerRegistryUsername, dockerRegistryPassword, useStaging, skipUpdate)
                             }
                             parallelBuilds["Build ${currentOs}-${db} wso2am-universal-gw image"] = {
-                                buildDockerImage(project, "wso2am-universal-gw", productVersion, currentOs, gwUpdateLevel, "${db}-latest", dbDriverUrl, dockerRegistry, dockerRegistryUsername, dockerRegistryPassword, useStaging)
+                                buildDockerImage(project, "wso2am-universal-gw", productVersion, currentOs, gwUpdateLevel, "${db}-latest", dbDriverUrl, dockerRegistry, dockerRegistryUsername, dockerRegistryPassword, useStaging, skipUpdate)
                             }
                         }
                     }
