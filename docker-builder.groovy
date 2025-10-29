@@ -59,6 +59,7 @@ pipeline {
         stage('Clone repos') {
             steps {
                 script {
+                    println "Cloning Docker repository ${dockerRepoUrl}:${docker_apim_branch}..."
                     dir(dockerDirectory) {
                         git branch: "${docker_apim_branch}",
                         credentialsId: githubCredentialId,
