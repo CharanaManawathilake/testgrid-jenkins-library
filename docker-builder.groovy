@@ -145,6 +145,12 @@ pipeline {
                             echo 'exit-code(2): Self update'
                             statusCode = sh(
                                     script: """
+                                if [ "${use_staging}" = "true" ] || [ "${use_staging}" = true ]; then
+                                    export WSO2_UPDATES_UPDATE_LEVEL_STATE=TESTING
+                                else
+                                    export WSO2_UPDATES_UPDATE_LEVEL_STATE=VERIFYING
+                                fi
+
                                 chmod +x $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux
                                 $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux version
                                 export UPDATE_LEVEL='$update_level'
@@ -177,6 +183,9 @@ pipeline {
                             currentBuild.result = 'FAILURE'
                             sh "exit 1"
                         }
+                        sh """
+                        cat $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/updates/logs/*.log | grep 'Applied' || echo "No updates applied."
+                        """ 
                     }
                 }
             }
