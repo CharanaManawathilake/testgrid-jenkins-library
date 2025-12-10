@@ -18,9 +18,8 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: testgrid-eks-cluster
-  region: us-east-1
-  version: "1.30"
+  name: ${EKS_CLUSTER_NAME}
+  region: ${EKS_CLUSTER_REGION}
 
 availabilityZones: ["us-east-1a","us-east-1b"]
 
