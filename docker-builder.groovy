@@ -1,3 +1,4 @@
+#!groovy
 /*
  * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com).
  *
@@ -15,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#!groovy
 
 // Input parameters
 String project = params.project
@@ -31,11 +31,11 @@ String docker_registry_username = params.docker_registry_username
 String docker_registry_password = params.docker_registry_password
 String db_driver_url = params.db_driver_url
 Boolean use_staging = params.use_staging
+String docker_apim_branch = params.docker_apim_branch ?: "4.5.x"
 
 // Default values
 String wso2_product_full_name = "${project}-${wso2_product}"
 String dockerDirectory = "docker"
-String dockerRepoBranch = "4.5.x"
 String dockerRepoUrl = "https://github.com/wso2/docker-apim.git"
 // Git
 String githubCredentialId = "WSO2_GITHUB_TOKEN"
@@ -59,8 +59,9 @@ pipeline {
         stage('Clone repos') {
             steps {
                 script {
+                    println "Cloning Docker repository ${dockerRepoUrl}:${docker_apim_branch}..."
                     dir(dockerDirectory) {
-                        git branch: "${dockerRepoBranch}",
+                        git branch: "${docker_apim_branch}",
                         credentialsId: githubCredentialId,
                         url: "${dockerRepoUrl}"
                     }
@@ -144,6 +145,12 @@ pipeline {
                             echo 'exit-code(2): Self update'
                             statusCode = sh(
                                     script: """
+                                if [ "${use_staging}" = "true" ] || [ "${use_staging}" = true ]; then
+                                    export WSO2_UPDATES_UPDATE_LEVEL_STATE=TESTING
+                                else
+                                    export WSO2_UPDATES_UPDATE_LEVEL_STATE=VERIFYING
+                                fi
+
                                 chmod +x $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux
                                 $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux version
                                 export UPDATE_LEVEL='$update_level'
@@ -176,6 +183,9 @@ pipeline {
                             currentBuild.result = 'FAILURE'
                             sh "exit 1"
                         }
+                        sh """
+                        cat $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/updates/logs/*.log | grep 'Applied' || echo "No updates applied."
+                        """ 
                     }
                 }
             }
