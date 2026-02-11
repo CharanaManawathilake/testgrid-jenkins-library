@@ -932,6 +932,12 @@ pipeline {
                                                             echo "DCR endpoint not ready yet. Waiting 10s..."
                                                             sleep 10
                                                         done
+
+                                                        # After retry loop: fail explicitly if endpoint never became ready
+                                                        if ! [[ "\$STATUS" =~ ^[234] ]]; then
+                                                            echo "ERROR: DCR endpoint did not become ready after 30 attempts. Aborting tests."
+                                                            exit 1
+                                                        fi
                                                     """
 
                                                     sh """
