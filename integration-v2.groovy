@@ -146,14 +146,19 @@ def createDeploymentPatterns(String project, String product, String productVersi
     }
 }
 
+def getDbNames(String dbSuffix) {
+    String sharedDbName = dbSuffix ? "shared_db_${dbSuffix}" : "shared_db"
+    String apimDbName   = dbSuffix ? "apim_db_${dbSuffix}"   : "apim_db"
+    return [sharedDbName, apimDbName]
+}
+
 /**
  * Execute DB scripts to create and initialise databases.
  * @param dbSuffix  Suffix for unique DB names per test pattern (e.g. "all_staging").
  *                  Use empty string "" for single-pattern / custom mode (names stay shared_db, apim_db).
  */
 def executeDBScripts(String dbEngine, String dbEndpoint, String dbUser, String dbPassword, String scriptPath, String dbSuffix) {
-    String sharedDbName = dbSuffix ? "shared_db_${dbSuffix}" : "shared_db"
-    String apimDbName   = dbSuffix ? "apim_db_${dbSuffix}"   : "apim_db"
+    def (sharedDbName, apimDbName) = getDbNames(dbSuffix)
     println "Executing DB scripts for ${dbEngine} at ${dbEndpoint} (databases: ${sharedDbName}, ${apimDbName})..."
 
     try {
@@ -713,8 +718,7 @@ pipeline {
                                                     // Namespace includes peer test pattern name for isolation
                                                     def namespace = (peerTestPatterns.size() > 1) ? "${patternSafe.id}-${dbEngineNameSafe}-${dpName}" : "${patternSafe.id}-${dbEngineNameSafe}"
                                                     // Unique DB names for this peer test pattern
-                                                    String sharedDbName = dbSuffix ? "shared_db_${dbSuffix}" : "shared_db"
-                                                    String apimDbName   = dbSuffix ? "apim_db_${dbSuffix}"   : "apim_db"
+                                                    def (sharedDbName, apimDbName) = getDbNames(dbSuffix)
 
                                                     // Hostnames include peer test pattern name when running multiple patterns
                                                     def hostSuffix = (peerTestPatterns.size() > 1) ? "${dbEngineNameSafe}-${dpName}" : "${dbEngineNameSafe}"
@@ -748,7 +752,6 @@ pipeline {
                                                     String wso2amTmImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-tm --query 'imageDetails[?contains(imageTags, `${tmImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
                                                     String wso2amGwImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-universal-gw --query 'imageDetails[?contains(imageTags, `${gwImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
 
-                                                    sleep 60
 
                                                     // Execute DB scripts with per-pattern database names
                                                     executeDBScripts(dbEngineNameSafe, endpoint, dbUser, dbPassword, "${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}", dbSuffix)
