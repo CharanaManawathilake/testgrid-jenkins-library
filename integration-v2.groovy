@@ -166,7 +166,7 @@ def getDbNames(String dbSuffix) {
 def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
     sh """#!/bin/bash
         for i in \$(seq 1 ${maxAttempts}); do
-            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k \\
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 \\
                 -X POST \\
                 -H "Host: ${portalHost}" \\
                 -H "Content-Type: application/json" \\
@@ -201,7 +201,7 @@ def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30,
 def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
     sh """#!/bin/bash
         for i in \$(seq 1 ${maxAttempts}); do
-            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k -H "Host: ${portalHost}" https://${hostName}/api/am/publisher/v4/apis)
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 -H "Host: ${portalHost}" https://${hostName}/api/am/publisher/v4/apis)
             echo "Readiness Check \$i: Publisher API returned HTTP \$STATUS"
             if [[ "\$STATUS" =~ ^[234] ]]; then
                 echo "Publisher API is ready (HTTP \$STATUS)! Proceeding..."
