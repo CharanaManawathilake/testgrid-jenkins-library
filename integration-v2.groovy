@@ -153,6 +153,72 @@ def getDbNames(String dbSuffix) {
 }
 
 /**
+ * Wait for the DCR (Dynamic Client Registration) endpoint to become ready.
+ * Sends a real POST with Basic auth (admin:admin) and an empty JSON body.
+ * A fully initialized DCR returns 400 (bad request - missing required fields).
+ * A still-initializing DCR returns 500 or 000.
+ *
+ * @param hostName   The ingress/service hostname to connect to.
+ * @param portalHost The Host header value for the request.
+ * @param maxAttempts Maximum number of retry attempts (default 30).
+ * @param waitSeconds Seconds to wait between attempts (default 10).
+ */
+def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
+    sh """#!/bin/bash
+        for i in \$(seq 1 ${maxAttempts}); do
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k \\
+                -X POST \\
+                -H "Host: ${portalHost}" \\
+                -H "Content-Type: application/json" \\
+                -H "Authorization: Basic YWRtaW46YWRtaW4=" \\
+                -d '{}' \\
+                https://${hostName}/client-registration/v0.17/register)
+            echo "Readiness Check \$i: DCR endpoint returned HTTP \$STATUS"
+            if [[ "\$STATUS" =~ ^[234] ]]; then
+                echo "DCR endpoint is ready (HTTP \$STATUS)! Proceeding..."
+                break
+            fi
+            echo "DCR endpoint not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
+            sleep ${waitSeconds}
+        done
+
+        if ! [[ "\$STATUS" =~ ^[234] ]]; then
+            echo "ERROR: DCR endpoint did not become ready after ${maxAttempts} attempts. Aborting tests."
+            exit 1
+        fi
+    """
+}
+
+/**
+ * Wait for the Publisher REST API to become ready.
+ * Sends a GET request to the Publisher APIs listing endpoint.
+ *
+ * @param hostName   The ingress/service hostname to connect to.
+ * @param portalHost The Host header value for the request.
+ * @param maxAttempts Maximum number of retry attempts (default 30).
+ * @param waitSeconds Seconds to wait between attempts (default 10).
+ */
+def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
+    sh """#!/bin/bash
+        for i in \$(seq 1 ${maxAttempts}); do
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k -H "Host: ${portalHost}" https://${hostName}/api/am/publisher/v4/apis)
+            echo "Readiness Check \$i: Publisher API returned HTTP \$STATUS"
+            if [[ "\$STATUS" =~ ^[234] ]]; then
+                echo "Publisher API is ready (HTTP \$STATUS)! Proceeding..."
+                break
+            fi
+            echo "Publisher API not ready yet. Waiting ${waitSeconds}s..."
+            sleep ${waitSeconds}
+        done
+
+        if ! [[ "\$STATUS" =~ ^[234] ]]; then
+            echo "ERROR: Publisher API did not become ready after ${maxAttempts} attempts. Aborting tests."
+            exit 1
+        fi
+    """
+}
+
+/**
  * Execute DB scripts to create and initialise databases.
  * @param dbSuffix  Suffix for unique DB names per test pattern (e.g. "all_staging").
  *                  Use empty string "" for single-pattern / custom mode (names stay shared_db, apim_db).
@@ -925,55 +991,10 @@ pipeline {
                                                     """
 
                                                     echo "Waiting for DCR endpoint to be ready for ${stageId}..."
-                                                    sh """#!/bin/bash
-                                                        # Retry loop: Wait up to 5 minutes (30 * 10s) for DCR POST to return a non-500 HTTP status
-                                                        # Uses a real POST with Basic auth (admin:admin) and empty JSON body.
-                                                        # A fully initialized DCR returns 400 (bad request - missing required fields).
-                                                        # A still-initializing DCR returns 500 or 000.
-                                                        for i in \$(seq 1 30); do
-                                                            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k \
-                                                                -X POST \
-                                                                -H "Host: ${portalHost}" \
-                                                                -H "Content-Type: application/json" \
-                                                                -H "Authorization: Basic YWRtaW46YWRtaW4=" \
-                                                                -d '{}' \
-                                                                https://${patternSafe.hostName}/client-registration/v0.17/register)
-                                                            echo "Readiness Check \$i: DCR endpoint returned HTTP \$STATUS"
-                                                            if [[ "\$STATUS" =~ ^[234] ]]; then
-                                                                echo "DCR endpoint is ready (HTTP \$STATUS)! Proceeding..."
-                                                                break
-                                                            fi
-                                                            echo "DCR endpoint not ready yet (HTTP \$STATUS). Waiting 10s..."
-                                                            sleep 10
-                                                        done
-
-                                                        # After retry loop: fail explicitly if endpoint never became ready
-                                                        if ! [[ "\$STATUS" =~ ^[234] ]]; then
-                                                            echo "ERROR: DCR endpoint did not become ready after 30 attempts. Aborting tests."
-                                                            exit 1
-                                                        fi
-                                                    """
+                                                    waitForDcrEndpoint(patternSafe.hostName, portalHost)
 
                                                     echo "Waiting for Publisher API to be ready for ${stageId}..."
-                                                    sh """#!/bin/bash
-                                                        # Retry loop: Wait up to 5 minutes (30 * 10s) for Publisher API to return a valid HTTP status
-                                                        for i in \$(seq 1 30); do
-                                                            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k -H "Host: ${portalHost}" https://${patternSafe.hostName}/api/am/publisher/v4/apis)
-                                                            echo "Readiness Check \$i: Publisher API returned HTTP \$STATUS"
-                                                            if [[ "\$STATUS" =~ ^[234] ]]; then
-                                                                echo "Publisher API is ready (HTTP \$STATUS)! Proceeding..."
-                                                                break
-                                                            fi
-                                                            echo "Publisher API not ready yet. Waiting 10s..."
-                                                            sleep 10
-                                                        done
-
-                                                        # After retry loop: fail explicitly if endpoint never became ready
-                                                        if ! [[ "\$STATUS" =~ ^[234] ]]; then
-                                                            echo "ERROR: Publisher API did not become ready after 30 attempts. Aborting tests."
-                                                            exit 1
-                                                        fi
-                                                    """
+                                                    waitForPublisherApi(patternSafe.hostName, portalHost)
 
                                                     sh """
                                                         ./main.sh --HOSTNAME="${patternSafe.hostName}" \
