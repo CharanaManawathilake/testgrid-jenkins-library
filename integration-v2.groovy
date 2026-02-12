@@ -26,6 +26,7 @@ String productDeploymentRegion = params.productDeploymentRegion
 String[] osList = params.osList?.split(',')?.collect { it.trim() } ?: []
 String[] databaseList = params.databaseList?.split(',')?.collect { it.trim() } ?: []
 String albCertArn = params.albCertArn
+Boolean skipPeerTest = params.skipPeerTest ?: false
 String acpUpdateLevel = params.acpUpdateLevel?: "-1"
 String tmUpdateLevel = params.tmUpdateLevel?: "-1"
 String gwUpdateLevel = params.gwUpdateLevel?: "-1"
@@ -44,7 +45,6 @@ Boolean skipTfApply = params.skipTfApply
 Boolean skipDockerBuild = params.skipDockerBuild
 Boolean skipTests = params.skipTests
 Boolean skipUpdate = params.skipUpdate ?: false
-Boolean skipPeerTest = params.skipPeerTest ?: false
 
 // Default values
 def deploymentPatterns = []
@@ -150,6 +150,77 @@ def getDbNames(String dbSuffix) {
     String sharedDbName = dbSuffix ? "shared_db_${dbSuffix}" : "shared_db"
     String apimDbName   = dbSuffix ? "apim_db_${dbSuffix}"   : "apim_db"
     return [sharedDbName, apimDbName]
+}
+
+/**
+ * Wait for the DCR (Dynamic Client Registration) endpoint to become ready.
+ * Sends a real POST with Basic auth (admin:admin) and an empty JSON body.
+ * A fully initialized DCR returns 400 (bad request — missing required fields).
+ * A still-initializing DCR returns 500; a connection failure returns 000.
+ * Only HTTP 400 is treated as "ready". Other 4xx (404, 405) indicate a
+ * misconfigured route or method and are not accepted.
+ *
+ * @param hostName   The ingress/service hostname to connect to.
+ * @param portalHost The Host header value for the request.
+ * @param maxAttempts Maximum number of retry attempts (default 30).
+ * @param waitSeconds Seconds to wait between attempts (default 10).
+ */
+def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
+    sh """#!/bin/bash
+        for i in \$(seq 1 ${maxAttempts}); do
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 \\
+                -X POST \\
+                -H "Host: ${portalHost}" \\
+                -H "Content-Type: application/json" \\
+                -H "Authorization: Basic YWRtaW46YWRtaW4=" \\
+                -d '{}' \\
+                https://${hostName}/client-registration/v0.17/register)
+            echo "Readiness Check \$i: DCR endpoint returned HTTP \$STATUS"
+            if [[ "\$STATUS" == "400" ]]; then
+                echo "DCR endpoint is ready (HTTP \$STATUS)! Proceeding..."
+                break
+            fi
+            echo "DCR endpoint not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
+            sleep ${waitSeconds}
+        done
+
+        if [[ "\$STATUS" != "400" ]]; then
+            echo "ERROR: DCR endpoint did not become ready after ${maxAttempts} attempts. Aborting tests."
+            exit 1
+        fi
+    """
+}
+
+/**
+ * Wait for the Publisher REST API to become ready.
+ * Sends an unauthenticated GET to the Publisher APIs listing endpoint.
+ * A ready Publisher returns 401 (Unauthorized). A still-initializing
+ * webapp returns 500 or 000. Only 200, 401, and 403 are accepted as
+ * "ready"; 404 (route not registered) and 302 (redirect) are not.
+ *
+ * @param hostName   The ingress/service hostname to connect to.
+ * @param portalHost The Host header value for the request.
+ * @param maxAttempts Maximum number of retry attempts (default 30).
+ * @param waitSeconds Seconds to wait between attempts (default 10).
+ */
+def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
+    sh """#!/bin/bash
+        for i in \$(seq 1 ${maxAttempts}); do
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 -H "Host: ${portalHost}" https://${hostName}/api/am/publisher/v4/apis)
+            echo "Readiness Check \$i: Publisher API returned HTTP \$STATUS"
+            if [[ "\$STATUS" =~ ^(200|401|403)$ ]]; then
+                echo "Publisher API is ready (HTTP \$STATUS)! Proceeding..."
+                break
+            fi
+            echo "Publisher API not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
+            sleep ${waitSeconds}
+        done
+
+        if ! [[ "\$STATUS" =~ ^(200|401|403)$ ]]; then
+            echo "ERROR: Publisher API did not become ready after ${maxAttempts} attempts. Aborting tests."
+            exit 1
+        fi
+    """
 }
 
 /**
@@ -925,25 +996,10 @@ pipeline {
                                                     """
 
                                                     echo "Waiting for DCR endpoint to be ready for ${stageId}..."
-                                                    sh """#!/bin/bash
-                                                        # Retry loop: Wait up to 5 minutes (30 * 10s) for DCR to return a valid HTTP status
-                                                        for i in \$(seq 1 30); do
-                                                            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k -H "Host: ${portalHost}" https://${patternSafe.hostName}/client-registration/v0.17/register)
-                                                            echo "Readiness Check \$i: DCR endpoint returned HTTP \$STATUS"
-                                                            if [[ "\$STATUS" =~ ^[234] ]]; then
-                                                                echo "DCR endpoint is ready (HTTP \$STATUS)! Proceeding..."
-                                                                break
-                                                            fi
-                                                            echo "DCR endpoint not ready yet. Waiting 10s..."
-                                                            sleep 10
-                                                        done
+                                                    waitForDcrEndpoint(patternSafe.hostName, portalHost)
 
-                                                        # After retry loop: fail explicitly if endpoint never became ready
-                                                        if ! [[ "\$STATUS" =~ ^[234] ]]; then
-                                                            echo "ERROR: DCR endpoint did not become ready after 30 attempts. Aborting tests."
-                                                            exit 1
-                                                        fi
-                                                    """
+                                                    echo "Waiting for Publisher API to be ready for ${stageId}..."
+                                                    waitForPublisherApi(patternSafe.hostName, portalHost)
 
                                                     sh """
                                                         ./main.sh --HOSTNAME="${patternSafe.hostName}" \
