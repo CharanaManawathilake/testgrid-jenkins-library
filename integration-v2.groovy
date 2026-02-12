@@ -626,7 +626,7 @@ pipeline {
                         return
                     }
                     
-                    // Pre-download APIM pack for each infra pattern (avoids race condition in parallel tasks)
+                    // Download APIM pack once (only needed for DB scripts and keystores)
                     withCredentials([
                         [
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -635,18 +635,18 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]
                     ]) {
+                        sh """
+                            if [ ! -d "./${apimPackDirectory}/${product}-${productVersion}" ]; then
+                                aws s3 cp --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip .
+                                unzip -o ${product}-${productVersion}.zip -d ./${apimPackDirectory}
+                                ls -la ./${apimPackDirectory}/${product}-${productVersion}/
+                            else
+                                echo "APIM pack already downloaded."
+                            fi
+                        """
+                        // Copy the extracted pack into each pattern directory so deploy stages can reference it
                         for (def pattern : deploymentPatterns) {
-                            dir("${pattern.directory}") {
-                                sh """
-                                    if [ ! -d "./${apimPackDirectory}/${product}-${productVersion}" ]; then
-                                        aws s3 cp --quiet s3://${apimPackS3Bucket}/packs/${product}-${productVersion}.zip .
-                                        unzip -o ${product}-${productVersion}.zip -d ./${apimPackDirectory}
-                                        ls -la ./${apimPackDirectory}/${product}-${productVersion}/
-                                    else
-                                        echo "APIM pack already downloaded."
-                                    fi
-                                """
-                            }
+                            sh "cp -r ./${apimPackDirectory} ${pattern.directory}/"
                         }
                     }
 
