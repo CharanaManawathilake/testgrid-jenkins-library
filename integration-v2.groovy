@@ -157,7 +157,7 @@ def getDbNames(String dbSuffix) {
  * Sends a real POST with Basic auth (admin:admin) and an empty JSON body.
  * A fully initialized DCR returns 400 (bad request — missing required fields).
  * A still-initializing DCR returns 500; a connection failure returns 000.
- * Only HTTP 400 is treated as "ready". Other 4xx (404, 405) indicate a
+ * HTTP 400 and 201 are treated as "ready" (both prove the webapp is alive and responding to the correct route and method). HTTP 404, 302, and 000 are treated as "not ready" (indicating the webapp is not fully initialized or there is a
  * misconfigured route or method and are not accepted.
  *
  * @param hostName   The ingress/service hostname to connect to.
@@ -176,7 +176,7 @@ def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30,
                 -d '{}' \\
                 https://${hostName}/client-registration/v0.17/register)
             echo "Readiness Check \$i: DCR endpoint returned HTTP \$STATUS"
-            if [[ "\$STATUS" == "400" ]]; then
+            if [[ "\$STATUS" == "400" || "\$STATUS" == "201" ]]; then
                 echo "DCR endpoint is ready (HTTP \$STATUS)! Proceeding..."
                 break
             fi
@@ -184,7 +184,7 @@ def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30,
             sleep ${waitSeconds}
         done
 
-        if [[ "\$STATUS" != "400" ]]; then
+        if [[ "\$STATUS" != "400" && "\$STATUS" != "201" ]]; then
             echo "ERROR: DCR endpoint did not become ready after ${maxAttempts} attempts. Aborting tests."
             exit 1
         fi
@@ -208,7 +208,7 @@ def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30
         for i in \$(seq 1 ${maxAttempts}); do
             STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 -H "Host: ${portalHost}" https://${hostName}/api/am/publisher/v4/apis)
             echo "Readiness Check \$i: Publisher API returned HTTP \$STATUS"
-            if [[ "\$STATUS" =~ ^(200|401|403)$ ]]; then
+            if [[ "\$STATUS" =~ ^(200|401|403)\$ ]]; then
                 echo "Publisher API is ready (HTTP \$STATUS)! Proceeding..."
                 break
             fi
@@ -216,7 +216,7 @@ def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30
             sleep ${waitSeconds}
         done
 
-        if ! [[ "\$STATUS" =~ ^(200|401|403)$ ]]; then
+        if ! [[ "\$STATUS" =~ ^(200|401|403)\$ ]]; then
             echo "ERROR: Publisher API did not become ready after ${maxAttempts} attempts. Aborting tests."
             exit 1
         fi
