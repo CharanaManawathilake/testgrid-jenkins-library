@@ -208,7 +208,7 @@ def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30
         for i in \$(seq 1 ${maxAttempts}); do
             STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 -H "Host: ${portalHost}" https://${hostName}/api/am/publisher/v4/apis)
             echo "Readiness Check \$i: Publisher API returned HTTP \$STATUS"
-            if [[ "\$STATUS" =~ ^(200|401|403)$ ]]; then
+            if [[ "\$STATUS" =~ ^(200|401|403)\$ ]]; then
                 echo "Publisher API is ready (HTTP \$STATUS)! Proceeding..."
                 break
             fi
@@ -216,7 +216,7 @@ def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30
             sleep ${waitSeconds}
         done
 
-        if ! [[ "\$STATUS" =~ ^(200|401|403)$ ]]; then
+        if ! [[ "\$STATUS" =~ ^(200|401|403)\$ ]]; then
             echo "ERROR: Publisher API did not become ready after ${maxAttempts} attempts. Aborting tests."
             exit 1
         fi
