@@ -26,7 +26,7 @@ String productDeploymentRegion = params.productDeploymentRegion
 String[] osList = params.osList?.split(',')?.collect { it.trim() } ?: []
 String[] databaseList = params.databaseList?.split(',')?.collect { it.trim() } ?: []
 String albCertArn = params.albCertArn
-Boolean skipPeerTest = params.skipPeerTest ?: false
+Boolean skipPeerTest = params.skipPeerTest?.toString()?.toBoolean() ?: false
 String acpUpdateLevel = params.acpUpdateLevel?: "-1"
 String tmUpdateLevel = params.tmUpdateLevel?: "-1"
 String gwUpdateLevel = params.gwUpdateLevel?: "-1"
@@ -61,20 +61,6 @@ def deploymentPatterns = []
 def peerTestPatterns = []
 int nodesPerNamespace = 5
 
-if (!skipPeerTest) {
-    peerTestPatterns = [
-        [name: "all-staging", acpVariant: "latest", tmVariant: "latest", gwVariant: "latest"],
-        [name: "acp-staging", acpVariant: "latest", tmVariant: "ga",     gwVariant: "ga"],
-        [name: "tm-staging",  acpVariant: "ga",     tmVariant: "latest", gwVariant: "ga"],
-        [name: "gw-staging",  acpVariant: "ga",     tmVariant: "ga",     gwVariant: "latest"],
-    ]
-} else {
-    peerTestPatterns = [
-        [name: "custom", acpVariant: "latest", tmVariant: "latest", gwVariant: "latest"],
-    ]
-}
-String updateType = "u2"
-String hostName = ""
 String dbUser = "wso2carbon"
 // Helm repository details
 String helmRepoUrl = "https://github.com/wso2/helm-apim.git"
@@ -152,21 +138,40 @@ def getDbNames(String dbSuffix) {
     return [sharedDbName, apimDbName]
 }
 
+@NonCPS
+def resolvePeerTestPatterns(Boolean skipPeerTest) {
+    if (!skipPeerTest) {
+        return [
+            [name: "all-staging", acpVariant: "latest", tmVariant: "latest", gwVariant: "latest"],
+            [name: "acp-staging", acpVariant: "latest", tmVariant: "ga",     gwVariant: "ga"],
+            [name: "tm-staging",  acpVariant: "ga",     tmVariant: "latest", gwVariant: "ga"],
+            [name: "gw-staging",  acpVariant: "ga",     tmVariant: "ga",     gwVariant: "latest"],
+        ]
+    }
+    return [
+        [name: "custom", acpVariant: "latest", tmVariant: "latest", gwVariant: "latest"],
+    ]
+}
+
 /**
  * Wait for the DCR (Dynamic Client Registration) endpoint to become ready.
  * Sends a real POST with Basic auth (admin:admin) and an empty JSON body.
  * A fully initialized DCR returns 400 (bad request — missing required fields).
  * A still-initializing DCR returns 500; a connection failure returns 000.
- * HTTP 400 and 201 are treated as "ready" (both prove the webapp is alive and responding to the correct route and method). HTTP 404, 302, and 000 are treated as "not ready" (indicating the webapp is not fully initialized or there is a
- * misconfigured route or method and are not accepted.
+ * HTTP 400 and 201 are treated as "ready" (both prove the webapp is
+ * initialized). Other 4xx (404, 405) indicate a misconfigured route or
+ * method and are not accepted.
  *
  * @param hostName   The ingress/service hostname to connect to.
  * @param portalHost The Host header value for the request.
- * @param maxAttempts Maximum number of retry attempts (default 30).
+ * @param maxAttempts Maximum number of retry attempts (default 45).
  * @param waitSeconds Seconds to wait between attempts (default 10).
+ * @param consecutiveSuccesses Number of consecutive successful checks required to mark as ready (default 3).
  */
-def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
+def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 45, int waitSeconds = 10, int consecutiveSuccesses = 3) {
     sh """#!/bin/bash
+        success_streak=0
+        STATUS=000
         for i in \$(seq 1 ${maxAttempts}); do
             STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 \\
                 -X POST \\
@@ -177,15 +182,21 @@ def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30,
                 https://${hostName}/client-registration/v0.17/register)
             echo "Readiness Check \$i: DCR endpoint returned HTTP \$STATUS"
             if [[ "\$STATUS" == "400" || "\$STATUS" == "201" ]]; then
-                echo "DCR endpoint is ready (HTTP \$STATUS)! Proceeding..."
-                break
+                success_streak=\$((success_streak + 1))
+                echo "DCR readiness streak: \$success_streak/${consecutiveSuccesses}"
+                if [[ \$success_streak -ge ${consecutiveSuccesses} ]]; then
+                    echo "DCR endpoint is stable and ready (HTTP \$STATUS)! Proceeding..."
+                    break
+                fi
+            else
+                success_streak=0
+                echo "DCR endpoint not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
             fi
-            echo "DCR endpoint not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
             sleep ${waitSeconds}
         done
 
-        if [[ "\$STATUS" != "400" && "\$STATUS" != "201" ]]; then
-            echo "ERROR: DCR endpoint did not become ready after ${maxAttempts} attempts. Aborting tests."
+        if [[ \$success_streak -lt ${consecutiveSuccesses} ]]; then
+            echo "ERROR: DCR endpoint did not reach ${consecutiveSuccesses} consecutive ready checks after ${maxAttempts} attempts. Last HTTP status: \$STATUS"
             exit 1
         fi
     """
@@ -200,26 +211,130 @@ def waitForDcrEndpoint(String hostName, String portalHost, int maxAttempts = 30,
  *
  * @param hostName   The ingress/service hostname to connect to.
  * @param portalHost The Host header value for the request.
- * @param maxAttempts Maximum number of retry attempts (default 30).
+ * @param maxAttempts Maximum number of retry attempts (default 45).
  * @param waitSeconds Seconds to wait between attempts (default 10).
+ * @param consecutiveSuccesses Number of consecutive successful checks required to mark as ready (default 3).
  */
-def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 30, int waitSeconds = 10) {
+def waitForPublisherApi(String hostName, String portalHost, int maxAttempts = 45, int waitSeconds = 10, int consecutiveSuccesses = 3) {
     sh """#!/bin/bash
+        success_streak=0
+        STATUS=000
         for i in \$(seq 1 ${maxAttempts}); do
             STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 -H "Host: ${portalHost}" https://${hostName}/api/am/publisher/v4/apis)
             echo "Readiness Check \$i: Publisher API returned HTTP \$STATUS"
             if [[ "\$STATUS" =~ ^(200|401|403)\$ ]]; then
-                echo "Publisher API is ready (HTTP \$STATUS)! Proceeding..."
-                break
+                success_streak=\$((success_streak + 1))
+                echo "Publisher readiness streak: \$success_streak/${consecutiveSuccesses}"
+                if [[ \$success_streak -ge ${consecutiveSuccesses} ]]; then
+                    echo "Publisher API is stable and ready (HTTP \$STATUS)! Proceeding..."
+                    break
+                fi
+            else
+                success_streak=0
+                echo "Publisher API not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
             fi
-            echo "Publisher API not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
             sleep ${waitSeconds}
         done
 
-        if ! [[ "\$STATUS" =~ ^(200|401|403)\$ ]]; then
-            echo "ERROR: Publisher API did not become ready after ${maxAttempts} attempts. Aborting tests."
+        if [[ \$success_streak -lt ${consecutiveSuccesses} ]]; then
+            echo "ERROR: Publisher API did not reach ${consecutiveSuccesses} consecutive ready checks after ${maxAttempts} attempts. Last HTTP status: \$STATUS"
             exit 1
         fi
+    """
+}
+
+/**
+ * Wait for the Gateway REST API to become ready.
+ * Sends an unauthenticated GET to the Gateway APIs listing endpoint
+ * through the gateway ingress hostname. A ready Gateway returns 401
+ * (Unauthorized) or 200. A still-initializing Gateway returns 500 or
+ * 000 (connection refused). Only 200, 401, and 403 are accepted as
+ * "ready"; 404 (route not registered) and 302 (redirect) are not.
+ *
+ * This check is critical for parallel peer-test runs where resource
+ * contention can delay Gateway pod startup compared to ACP pods.
+ * Without it, Newman tests may hit a Gateway that is not yet serving
+ * traffic, causing spurious 404 failures on API invocations.
+ *
+ * @param hostName   The ingress/service hostname (ELB) to connect to.
+ * @param gwHost     The Gateway Host header value for the request.
+ * @param maxAttempts Maximum number of retry attempts (default 45).
+ * @param waitSeconds Seconds to wait between attempts (default 10).
+ * @param consecutiveSuccesses Number of consecutive successful checks required to mark as ready (default 3).
+ */
+def waitForGatewayApi(String hostName, String gwHost, int maxAttempts = 45, int waitSeconds = 10, int consecutiveSuccesses = 3) {
+    sh """#!/bin/bash
+        success_streak=0
+        STATUS=000
+        for i in \$(seq 1 ${maxAttempts}); do
+            STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 10 --max-time 30 -H "Host: ${gwHost}" https://${hostName}/api/am/gateway/v2/apis)
+            echo "Readiness Check \$i: Gateway API returned HTTP \$STATUS"
+            if [[ "\$STATUS" =~ ^(200|401|403)\$ ]]; then
+                success_streak=\$((success_streak + 1))
+                echo "Gateway readiness streak: \$success_streak/${consecutiveSuccesses}"
+                if [[ \$success_streak -ge ${consecutiveSuccesses} ]]; then
+                    echo "Gateway API is stable and ready (HTTP \$STATUS)! Proceeding..."
+                    break
+                fi
+            else
+                success_streak=0
+                echo "Gateway API not ready yet (HTTP \$STATUS). Waiting ${waitSeconds}s..."
+            fi
+            sleep ${waitSeconds}
+        done
+
+        if [[ \$success_streak -lt ${consecutiveSuccesses} ]]; then
+            echo "ERROR: Gateway API did not reach ${consecutiveSuccesses} consecutive ready checks after ${maxAttempts} attempts. Last HTTP status: \$STATUS"
+            exit 1
+        fi
+    """
+}
+
+/**
+ * Wait until APIM pods are stable (all running/ready and no restart-count changes).
+ * This reduces flaky test starts when pods are still settling after rollout.
+ *
+ * @param kubeContext Kubernetes context name.
+ * @param namespace   Namespace that contains APIM pods.
+ * @param maxAttempts Max loop attempts (default 40).
+ * @param waitSeconds Sleep between attempts in seconds (default 15).
+ * @param requiredStableIterations Number of consecutive stable iterations (default 6).
+ */
+def waitForApimPodStability(String kubeContext, String namespace, int maxAttempts = 40, int waitSeconds = 15, int requiredStableIterations = 6) {
+    sh """#!/bin/bash
+        set -euo pipefail
+        stable_count=0
+        prev_restarts=""
+
+        for i in \$(seq 1 ${maxAttempts}); do
+            pod_snapshot=\$(kubectl --context=${kubeContext} get pods -n ${namespace} -l product=apim --no-headers || true)
+            total_count=\$(echo "\$pod_snapshot" | awk 'NF>0 {c++} END {print c+0}')
+            ready_count=\$(echo "\$pod_snapshot" | awk '\$2 == "1/1" && \$3 == "Running" {c++} END {print c+0}')
+            restart_snapshot=\$(kubectl --context=${kubeContext} get pods -n ${namespace} -l product=apim -o jsonpath='{range .items[*]}{.metadata.name}:{range .status.containerStatuses[*]}{.restartCount}{","}{end}{"\\n"}{end}' | sort || true)
+
+            echo "APIM stability check \$i: ready=\${ready_count}/\${total_count}"
+            echo "Restart snapshot: \${restart_snapshot}"
+
+            if [[ "\$total_count" -ge 6 && "\$ready_count" -eq "\$total_count" && "\$restart_snapshot" == "\$prev_restarts" ]]; then
+                stable_count=\$((stable_count + 1))
+                echo "Stable iteration streak: \${stable_count}/${requiredStableIterations}"
+            else
+                stable_count=0
+                prev_restarts="\$restart_snapshot"
+                echo "Pods not stable yet. Waiting ${waitSeconds}s..."
+            fi
+
+            if [[ \$stable_count -ge ${requiredStableIterations} ]]; then
+                echo "APIM pods are stable in namespace ${namespace}."
+                exit 0
+            fi
+
+            sleep ${waitSeconds}
+        done
+
+        echo "ERROR: APIM pods did not reach a stable state in namespace ${namespace}."
+        kubectl --context=${kubeContext} get pods -n ${namespace} -l product=apim -o wide || true
+        exit 1
     """
 }
 
@@ -390,14 +505,36 @@ def installDBClients() {
     }
 }
 
-@NonCPS
-def parseJson(String jsonString) {
-    return new groovy.json.JsonSlurper().parseText(jsonString)
-}
+def collectApimLogs(String kubeContext, String namespace, String outputDir, String logPrefix) {
+    try {
+        sh """#!/bin/bash
+            set +e
+            mkdir -p "${outputDir}"
 
-@NonCPS
-def stringifyJson(Map jsonMap) {
-    return new groovy.json.JsonBuilder(jsonMap).toPrettyString()
+            if ! kubectl --context=${kubeContext} get namespace ${namespace} >/dev/null 2>&1; then
+                echo "Namespace ${namespace} not found. Skipping APIM log collection." > "${outputDir}/${logPrefix}-log-collection.txt"
+                exit 0
+            fi
+
+            kubectl --context=${kubeContext} get pods -n ${namespace} -o wide > "${outputDir}/${logPrefix}-pods-wide.txt" || true
+            kubectl --context=${kubeContext} get events -n ${namespace} --sort-by=.metadata.creationTimestamp > "${outputDir}/${logPrefix}-events.txt" || true
+
+            mapfile -t pods < <(kubectl --context=${kubeContext} get pods -n ${namespace} -l product=apim -o custom-columns=:metadata.name --no-headers 2>/dev/null || true)
+            if [[ \${#pods[@]} -eq 0 ]]; then
+                echo "No APIM pods found in namespace ${namespace}." > "${outputDir}/${logPrefix}-log-collection.txt"
+                exit 0
+            fi
+
+            for pod in "\${pods[@]}"; do
+                [[ -z "\${pod}" ]] && continue
+                kubectl --context=${kubeContext} describe pod "\${pod}" -n ${namespace} > "${outputDir}/${logPrefix}-\${pod}.describe.txt" || true
+                kubectl --context=${kubeContext} logs "\${pod}" -n ${namespace} > "${outputDir}/${logPrefix}-\${pod}.log" || true
+                kubectl --context=${kubeContext} logs "\${pod}" -n ${namespace} --previous > "${outputDir}/${logPrefix}-\${pod}.previous.log" || true
+            done
+        """
+    } catch (Exception e) {
+        println "Failed to collect APIM logs for namespace ${namespace}: ${e.message}"
+    }
 }
 
 pipeline {
@@ -424,6 +561,9 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
+                    skipPeerTest = params.skipPeerTest?.toString()?.toBoolean() ?: false
+                    peerTestPatterns = resolvePeerTestPatterns(skipPeerTest)
+
                     println "OS List: ${osList}"
                     println "Database List: ${databaseList}"
                     println "Skip Peer Test: ${skipPeerTest}"
@@ -583,6 +723,10 @@ pipeline {
                                         # Install nginx ingress controller
                                         kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/aws/deploy.yaml || { echo "failed to install nginx ingress controller." ; exit 1 ; }
 
+                                        # Scale Nginx to handle parallel test traffic from multiple
+                                        # peer-test patterns hitting the same ELB concurrently.
+                                        kubectl -n ingress-nginx scale deployment ingress-nginx-controller --replicas=4
+
                                         # Delete Nginx admission if it exists.
                                         kubectl delete -A ValidatingWebhookConfiguration ingress-nginx-admission || echo "WARNING : Failed to delete nginx admission."
 
@@ -590,7 +734,7 @@ pipeline {
                                         kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=480s ||  { echo 'Nginx service is not ready within the expected time limit.';  exit 1; }
                                     """
 
-                                    hostName = sh(script: "kubectl -n ingress-nginx get svc ingress-nginx-controller -o json | jq -r '.status.loadBalancer.ingress[0].hostname'", returnStdout: true).trim()
+                                    def hostName = sh(script: "kubectl -n ingress-nginx get svc ingress-nginx-controller -o json | jq -r '.status.loadBalancer.ingress[0].hostname'", returnStdout: true).trim()
                                     println "Ingress Host Name: ${hostName}"
                                     pattern.hostName = hostName
 
@@ -756,6 +900,15 @@ pipeline {
                                 def acpImageTag = "${dbEngineNameSafe}-${dpSafe.acpVariant}"  // e.g. mysql-latest or mysql-ga
                                 def tmImageTag  = "${dbEngineNameSafe}-${dpSafe.tmVariant}"
                                 def gwImageTag  = "${dbEngineNameSafe}-${dpSafe.gwVariant}"
+                                // Namespace and hosts for this branch (stable across deploy/test stages)
+                                def namespace = (peerTestPatterns.size() > 1) ? "${patternSafe.id}-${dbEngineNameSafe}-${dpName}" : "${patternSafe.id}-${dbEngineNameSafe}"
+                                def hostSuffix = (peerTestPatterns.size() > 1) ? "${dbEngineNameSafe}-${dpName}" : "${dbEngineNameSafe}"
+                                def portalHost = "am-${hostSuffix}.wso2.com"
+                                def gwHost     = "gw-${hostSuffix}.wso2.com"
+                                def wsHost     = "websocket-${hostSuffix}.wso2.com"
+                                def websubHost = "websub-${hostSuffix}.wso2.com"
+                                def branchLogsDir = "${env.WORKSPACE}/${logsDirectory}"
+                                def branchLogPrefix = "${patternSafe.os}-${dpName}-${dbEngineNameSafe}"
                                 
                                 // Add deployment task to parallel map
                                 parallelDeployments["Deploy ${stageId}"] = {
@@ -786,42 +939,30 @@ pipeline {
                                                     patternSafe.dbEndpoints = new HashMap<>(dbWriterEndpoints)
 
                                                     def (endpoint, dbPort) = patternSafe.dbEndpoints["${dbEngineNameSafe}-${dbEngineList[dbEngineNameSafe].version}"]?.tokenize(':')
-                                                    // Namespace includes peer test pattern name for isolation
-                                                    def namespace = (peerTestPatterns.size() > 1) ? "${patternSafe.id}-${dbEngineNameSafe}-${dpName}" : "${patternSafe.id}-${dbEngineNameSafe}"
                                                     // Unique DB names for this peer test pattern
                                                     def (sharedDbName, apimDbName) = getDbNames(dbSuffix)
 
-                                                    // Hostnames include peer test pattern name when running multiple patterns
-                                                    def hostSuffix = (peerTestPatterns.size() > 1) ? "${dbEngineNameSafe}-${dpName}" : "${dbEngineNameSafe}"
-                                                    def portalHost = "am-${hostSuffix}.wso2.com"
-                                                    def gwHost     = "gw-${hostSuffix}.wso2.com"
-                                                    def wsHost     = "websocket-${hostSuffix}.wso2.com"
-                                                    def websubHost = "websub-${hostSuffix}.wso2.com"
-
                                                     sh """
-                                                        # Change context
-                                                        kubectl config use-context ${patternDirSafe}
+                                                        # Ensure a clean namespace to avoid state leaks across runs.
+                                                        if kubectl --context=${patternDirSafe} get namespace ${namespace} >/dev/null 2>&1; then
+                                                            echo "Namespace ${namespace} already exists. Deleting it for a clean deployment."
+                                                            kubectl --context=${patternDirSafe} delete namespace ${namespace} --timeout=600s
+                                                        fi
 
-                                                        # Create a namespace for the deployment
-                                                        kubectl create namespace ${namespace} || echo "Namespace ${namespace} already exists."
+                                                        # Create a fresh namespace for the deployment
+                                                        kubectl --context=${patternDirSafe} create namespace ${namespace}
 
-                                                        # Create apim-keystore-secret
-                                                        kubectl create secret generic apim-keystore-secret --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/wso2carbon.jks --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/client-truststore.jks -n ${namespace} || echo "Failed to create apim-keystore-secret."
+                                                        # Recreate secret directly (no kubectl apply) to avoid oversized
+                                                        # last-applied annotation when keystore binaries are large.
+                                                        kubectl --context=${patternDirSafe} delete secret apim-keystore-secret -n ${namespace} --ignore-not-found
+                                                        kubectl --context=${patternDirSafe} create secret generic apim-keystore-secret --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/wso2carbon.jks --from-file=${pwd}/${patternDirSafe}/${apimPackDirectory}/${product}-${productVersion}/repository/resources/security/client-truststore.jks -n ${namespace}
                                                     """
                                                     println "Namespace created: ${namespace}"
 
-                                                    sh """
-                                                    # Delete existing release if it exists
-                                                    helm list -n ${namespace} -q | xargs -n1 -I{} helm uninstall {} -n ${namespace} || echo "Failed to delete existing release."
-
-                                                    # Delete gateway REST ingress if it exists
-                                                    kubectl delete ingress gw-rest-ingress -n ${namespace} || echo "Skipped deleting existing ingress."
-                                                    """
-
                                                     // Fetch image digests using variant-specific tags
-                                                    String wso2amAcpImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-acp --query 'imageDetails[?contains(imageTags, `${acpImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
-                                                    String wso2amTmImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-tm --query 'imageDetails[?contains(imageTags, `${tmImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
-                                                    String wso2amGwImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-universal-gw --query 'imageDetails[?contains(imageTags, `${gwImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
+                                                    String wso2amAcpImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-acp --query 'imageDetails[?imageTags != null && contains(imageTags, `${acpImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
+                                                    String wso2amTmImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-tm --query 'imageDetails[?imageTags != null && contains(imageTags, `${tmImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
+                                                    String wso2amGwImageDigest = sh(script: "aws ecr describe-images --repository-name ${project}-wso2am-universal-gw --query 'imageDetails[?imageTags != null && contains(imageTags, `${gwImageTag}`)].imageDigest' --region ${productDeploymentRegion} --output text", returnStdout: true).trim()
 
 
                                                     // Execute DB scripts with per-pattern database names
@@ -831,13 +972,13 @@ pipeline {
                                                     // Install the product using Helm
                                                     sh """
                                                         # Gateway REST ingress
-                                                        helm install apim-ing ${pwd}/${apimIntgDirectory}/kubernetes/gw-ingress \
+                                                        helm --kube-context=${patternDirSafe} install apim-ing ${pwd}/${apimIntgDirectory}/kubernetes/gw-ingress \
                                                             --set hostname=${gwHost} \
                                                             --namespace ${namespace}
                                                         
                                                         # Deploy wso2am-acp (variant: ${dpSafe.acpVariant})
                                                         echo "Deploying WSO2 API Manager - API Control Plane [${dpSafe.acpVariant}] in ${namespace} namespace..."
-                                                        helm install apim-acp ${helmChartPath}/distributed/control-plane \
+                                                        helm --kube-context=${patternDirSafe} install apim-acp ${helmChartPath}/distributed/control-plane \
                                                             --namespace ${namespace} \
                                                             --set aws.enabled=false \
                                                             --set wso2.apim.configurations.adminUsername="admin" \
@@ -883,11 +1024,12 @@ pipeline {
                                                             --set wso2.apim.configurations.databases.shared_db.password="${dbPassword}"
                                                         
                                                         # Wait for the deployment to be ready
-                                                        kubectl wait --for=condition=available --timeout=400s deployment/apim-acp-wso2am-acp-deployment-1 -n ${namespace}
+                                                        kubectl --context=${patternDirSafe} wait --for=condition=available --timeout=400s deployment/apim-acp-wso2am-acp-deployment-1 -n ${namespace}
+                                                        kubectl --context=${patternDirSafe} wait --for=condition=available --timeout=400s deployment/apim-acp-wso2am-acp-deployment-2 -n ${namespace}
 
                                                         # Deploy wso2am-tm (variant: ${dpSafe.tmVariant})
                                                         echo "Deploying WSO2 API Manager - Traffic Manager [${dpSafe.tmVariant}] in ${namespace} namespace..."
-                                                        helm install apim-tm ${helmChartPath}/distributed/traffic-manager \
+                                                        helm --kube-context=${patternDirSafe} install apim-tm ${helmChartPath}/distributed/traffic-manager \
                                                             --namespace ${namespace} \
                                                             --set aws.enabled=false \
                                                             --set wso2.apim.configurations.adminUsername="admin" \
@@ -920,11 +1062,12 @@ pipeline {
                                                             --set wso2.apim.configurations.databases.shared_db.password="${dbPassword}"
 
                                                         # Wait for the deployment to be ready
-                                                        kubectl wait --for=condition=available --timeout=400s deployment/apim-tm-wso2am-tm-deployment-1 -n ${namespace}
+                                                        kubectl --context=${patternDirSafe} wait --for=condition=available --timeout=400s deployment/apim-tm-wso2am-tm-deployment-1 -n ${namespace}
+                                                        kubectl --context=${patternDirSafe} wait --for=condition=available --timeout=400s deployment/apim-tm-wso2am-tm-deployment-2 -n ${namespace}
 
                                                         # Deploy wso2am-gw (variant: ${dpSafe.gwVariant})
                                                         echo "Deploying WSO2 API Manager - Gateway [${dpSafe.gwVariant}] in ${namespace} namespace..."
-                                                        helm install apim-universal-gw ${helmChartPath}/distributed/gateway \
+                                                        helm --kube-context=${patternDirSafe} install apim-universal-gw ${helmChartPath}/distributed/gateway \
                                                             --namespace ${namespace} \
                                                             --set aws.enabled=false \
                                                             --set wso2.apim.configurations.adminUsername="admin" \
@@ -961,12 +1104,14 @@ pipeline {
                                                             --set wso2.deployment.minReplicas=2
                                                         
                                                         # Wait for the deployment to be ready
-                                                        kubectl wait --for=condition=ready --timeout=300s pod -l deployment=apim-universal-gw-wso2am-universal-gw -n ${namespace}
+                                                        kubectl --context=${patternDirSafe} rollout status deployment/apim-universal-gw-wso2am-universal-gw-deployment --timeout=400s -n ${namespace}
+                                                        kubectl --context=${patternDirSafe} wait --for=condition=ready --timeout=300s pod -l deployment=apim-universal-gw-wso2am-universal-gw -n ${namespace}
                                                     """
                                                 }
                                             }
                                         } catch (Exception e) {
                                             println "Deployment failed for ${stageId}: ${e}"
+                                            collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-deploy-failure")
                                             error "Deployment failed for ${stageId}. Please check the logs for more details."
                                         }
                                     }
@@ -985,15 +1130,15 @@ pipeline {
                                                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                                 ]
                                             ]) {
-                                                def namespace = (peerTestPatterns.size() > 1) ? "${patternSafe.id}-${dbEngineNameSafe}-${dpName}" : "${patternSafe.id}-${dbEngineNameSafe}"
-                                                def portalHost = (peerTestPatterns.size() > 1) ? "am-${dbEngineNameSafe}-${dpName}.wso2.com" : "am-${dbEngineNameSafe}.wso2.com"
-                                                def gwHost     = (peerTestPatterns.size() > 1) ? "gw-${dbEngineNameSafe}-${dpName}.wso2.com" : "gw-${dbEngineNameSafe}.wso2.com"
+                                                // Create an isolated copy of the test directory for this
+                                                // branch to prevent concurrent main.sh / Newman collisions.
+                                                def testDir = "${apimIntgDirectory}-${patternSafe.os}-${dbEngineNameSafe}-${dpName}-${env.BUILD_NUMBER}"
+                                                sh "rm -rf ${testDir}"
+                                                sh "cp -r ${apimIntgDirectory} ${testDir}"
 
-                                                dir("${apimIntgDirectory}") {
-                                                    sh """
-                                                        # Change context
-                                                        kubectl config use-context ${patternDirSafe}
-                                                    """
+                                                dir("${testDir}") {
+                                                    echo "Waiting for APIM pod stability for ${stageId}..."
+                                                    waitForApimPodStability(patternDirSafe, namespace)
 
                                                     echo "Waiting for DCR endpoint to be ready for ${stageId}..."
                                                     waitForDcrEndpoint(patternSafe.hostName, portalHost)
@@ -1001,35 +1146,44 @@ pipeline {
                                                     echo "Waiting for Publisher API to be ready for ${stageId}..."
                                                     waitForPublisherApi(patternSafe.hostName, portalHost)
 
-                                                    sh """
-                                                        ./main.sh --HOSTNAME="${patternSafe.hostName}" \
-                                                            --PORTAL_HOST="${portalHost}" \
-                                                            --GATEWAY_HOST="${gwHost}" \
-                                                            --kubernetes_namespace="${namespace}"
-                                                    """
-                                                }
+                                                    echo "Waiting for Gateway API to be ready for ${stageId}..."
+                                                    waitForGatewayApi(patternSafe.hostName, gwHost)
 
-                                                dir("${logsDirectory}") {
-                                                    def podNames = sh(
-                                                        script: "kubectl get pods -l product=apim -n=${namespace} -o custom-columns=:metadata.name",
-                                                        returnStdout: true
-                                                    ).trim().split('\n')
-                                                    println "APIM pods in namespace ${namespace}: ${podNames}"
-                                                    for (def podName : podNames) {
-                                                        if (podName?.trim()) {
-                                                            // Log filename includes peer test pattern name for traceability
-                                                            def logFile = "${dpName}-${dbEngineNameSafe}-${podName}.log"
-                                                            sh """
-                                                                kubectl logs ${podName} -n=${namespace} > ${logFile} || echo "Failed to get logs for pod ${podName}"
-                                                            """
-                                                        }
-                                                    }
-                                                    sh "ls -la"
+                                                    // All HTTP endpoints are reachable, but under heavy
+                                                    // parallel load internal JMS/EventHub subscriber threads
+                                                    // may still be catching up.
+                                                    echo "All HTTP endpoints are ready. Waiting 60s for internal JMS/EventHub sync..."
+                                                    sleep 60
+
+                                                    sh """#!/bin/bash
+                                                        set +e
+                                                        ./main.sh --HOSTNAME="${patternSafe.hostName}" \\
+                                                            --PORTAL_HOST="${portalHost}" \\
+                                                            --GATEWAY_HOST="${gwHost}" \\
+                                                            --kubernetes_namespace="${namespace}"
+                                                        TEST_EXIT_CODE=\$?
+                                                        if [[ \$TEST_EXIT_CODE -ne 0 ]]; then
+                                                            echo "main.sh failed for ${stageId} with exit code \$TEST_EXIT_CODE. Capturing diagnostics."
+                                                            kubectl --context=${patternDirSafe} get pods -n ${namespace} -o wide || true
+                                                            kubectl --context=${patternDirSafe} get events -n ${namespace} --sort-by=.metadata.creationTimestamp | tail -n 80 || true
+
+                                                            echo "Describing APIM pods..."
+                                                            for p in \$(kubectl --context=${patternDirSafe} get pods -n ${namespace} -l product=apim -o jsonpath='{.items[*].metadata.name}'); do
+                                                                echo "========== kubectl describe pod \$p =========="
+                                                                kubectl --context=${patternDirSafe} describe pod \$p -n ${namespace} || true
+                                                                echo "========== kubectl logs --previous \$p =========="
+                                                                kubectl --context=${patternDirSafe} logs \$p -n ${namespace} --previous || true
+                                                            done
+                                                        fi
+                                                        exit \$TEST_EXIT_CODE
+                                                    """
                                                 }
                                             }
                                         } catch (Exception e) {
                                             println "Test execution failed for ${stageId}: ${e}"
                                             error "Test execution failed for ${stageId}. Please check the logs for more details."
+                                        } finally {
+                                            collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-test")
                                         }
                                     }
                                 }
@@ -1090,7 +1244,7 @@ pipeline {
                     currentBuild.result = 'FAILURE'
                 } finally {
                     if (!onlyDestroyResources && !skipTests) {
-                        archiveArtifacts artifacts: "${logsDirectory}/**/*.*", fingerprint: true
+                        archiveArtifacts artifacts: "${logsDirectory}/**/*", fingerprint: true, allowEmptyArchive: true
                     }
                     // Clean up the workspace
                     cleanWs()
