@@ -53,9 +53,10 @@ def installDocker() {
         println "Docker not found. Installing..."
         sh """
             sudo apt update
-            sudo apt install apt-transport-https ca-certificates curl software-properties-common -y
+            sudo apt install apt-transport-https ca-certificates curl software-properties-common lsb-release -y
             curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-            sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+            UBUNTU_CODENAME=\$(lsb_release -cs)
+            sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu \$UBUNTU_CODENAME stable"
             
             sudo apt install docker-ce -y
             
