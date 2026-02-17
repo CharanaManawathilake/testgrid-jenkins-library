@@ -26,7 +26,6 @@ String productDeploymentRegion = params.productDeploymentRegion
 String[] osList = params.osList?.split(',')?.collect { it.trim() } ?: []
 String[] databaseList = params.databaseList?.split(',')?.collect { it.trim() } ?: []
 String albCertArn = params.albCertArn
-Boolean skipPeerTest = params.skipPeerTest?.toString()?.toBoolean() ?: false
 String acpUpdateLevel = params.acpUpdateLevel?: "-1"
 String tmUpdateLevel = params.tmUpdateLevel?: "-1"
 String gwUpdateLevel = params.gwUpdateLevel?: "-1"
@@ -45,6 +44,7 @@ Boolean skipTfApply = params.skipTfApply
 Boolean skipDockerBuild = params.skipDockerBuild
 Boolean skipTests = params.skipTests
 Boolean skipUpdate = params.skipUpdate ?: false
+Boolean skipPeerTest = params.skipPeerTest
 
 // Default values
 def deploymentPatterns = []
@@ -561,7 +561,6 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    skipPeerTest = params.skipPeerTest?.toString()?.toBoolean() ?: false
                     peerTestPatterns = resolvePeerTestPatterns(skipPeerTest)
 
                     println "OS List: ${osList}"
