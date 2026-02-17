@@ -49,7 +49,7 @@ def product_name_map = [
 ]
 
 def installDocker() {
-if (!fileExists('/usr/bin/docker')) {
+    if (!fileExists('/usr/bin/docker')) {
         println "Docker not found. Installing..."
         sh """
             sudo apt update
