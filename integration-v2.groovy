@@ -138,6 +138,34 @@ def getDbNames(String dbSuffix) {
     return [sharedDbName, apimDbName]
 }
 
+def validateShellSafeValue(String fieldName, String fieldValue) {
+    if (!fieldValue || !(fieldValue ==~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/)) {
+        error "Invalid value for ${fieldName}: '${fieldValue}'. Allowed characters: letters, digits, dot, dash, underscore."
+    }
+}
+
+def validatePipelineInputs(String project, String product, String productVersion, String productDeploymentRegion,
+                           String[] osList, String[] databaseList) {
+    validateShellSafeValue("project", project)
+    validateShellSafeValue("product", product)
+    validateShellSafeValue("productVersion", productVersion)
+    validateShellSafeValue("productDeploymentRegion", productDeploymentRegion)
+
+    if (!osList || osList.length == 0) {
+        error "osList cannot be empty."
+    }
+    for (String os : osList) {
+        validateShellSafeValue("osList entry", os)
+    }
+
+    if (!databaseList || databaseList.length == 0) {
+        error "databaseList cannot be empty."
+    }
+    for (String db : databaseList) {
+        validateShellSafeValue("databaseList entry", db)
+    }
+}
+
 @NonCPS
 def resolvePeerTestPatterns(Boolean skipPeerTest) {
     if (!skipPeerTest) {
@@ -506,35 +534,65 @@ def installDBClients() {
 }
 
 def collectApimLogs(String kubeContext, String namespace, String outputDir, String logPrefix) {
+    def kubeContextQuoted = shellQuote(kubeContext)
+    def namespaceQuoted = shellQuote(namespace)
+    def outputDirQuoted = shellQuote(outputDir)
+    def logPrefixQuoted = shellQuote(logPrefix)
+
     try {
         sh """#!/bin/bash
             set +e
-            mkdir -p "${outputDir}"
+            kube_context=${kubeContextQuoted}
+            namespace=${namespaceQuoted}
+            output_dir=${outputDirQuoted}
+            log_prefix=${logPrefixQuoted}
+            mkdir -p "\${output_dir}"
 
-            if ! kubectl --context=${kubeContext} get namespace ${namespace} >/dev/null 2>&1; then
-                echo "Namespace ${namespace} not found. Skipping APIM log collection." > "${outputDir}/${logPrefix}-log-collection.txt"
+            if ! kubectl config get-contexts "\${kube_context}" >/dev/null 2>&1; then
+                echo "Kubernetes context \${kube_context} not found. Skipping APIM log collection." > "\${output_dir}/\${log_prefix}-log-collection.txt"
                 exit 0
             fi
 
-            kubectl --context=${kubeContext} get pods -n ${namespace} -o wide > "${outputDir}/${logPrefix}-pods-wide.txt" || true
-            kubectl --context=${kubeContext} get events -n ${namespace} --sort-by=.metadata.creationTimestamp > "${outputDir}/${logPrefix}-events.txt" || true
+            ns_check_output="\$(kubectl --context="\${kube_context}" get namespace "\${namespace}" 2>&1)"
+            ns_check_exit=\$?
+            if [[ \$ns_check_exit -ne 0 ]]; then
+                if [[ "\$ns_check_output" == *"(NotFound)"* || "\$ns_check_output" == *"not found"* ]]; then
+                    echo "Namespace \${namespace} not found. Skipping APIM log collection." > "\${output_dir}/\${log_prefix}-log-collection.txt"
+                else
+                    {
+                        echo "Failed to access namespace \${namespace}. Skipping APIM log collection."
+                        echo "\$ns_check_output"
+                    } > "\${output_dir}/\${log_prefix}-log-collection.txt"
+                fi
+                exit 0
+            fi
 
-            mapfile -t pods < <(kubectl --context=${kubeContext} get pods -n ${namespace} -l product=apim -o custom-columns=:metadata.name --no-headers 2>/dev/null || true)
+            kubectl --context="\${kube_context}" get pods -n "\${namespace}" -o wide > "\${output_dir}/\${log_prefix}-pods-wide.txt" || true
+            kubectl --context="\${kube_context}" get events -n "\${namespace}" --sort-by=.metadata.creationTimestamp > "\${output_dir}/\${log_prefix}-events.txt" || true
+
+            mapfile -t pods < <(kubectl --context="\${kube_context}" get pods -n "\${namespace}" -l product=apim -o custom-columns=:metadata.name --no-headers 2>/dev/null || true)
             if [[ \${#pods[@]} -eq 0 ]]; then
-                echo "No APIM pods found in namespace ${namespace}." > "${outputDir}/${logPrefix}-log-collection.txt"
+                echo "No APIM pods found in namespace \${namespace}." > "\${output_dir}/\${log_prefix}-log-collection.txt"
                 exit 0
             fi
 
             for pod in "\${pods[@]}"; do
                 [[ -z "\${pod}" ]] && continue
-                kubectl --context=${kubeContext} describe pod "\${pod}" -n ${namespace} > "${outputDir}/${logPrefix}-\${pod}.describe.txt" || true
-                kubectl --context=${kubeContext} logs "\${pod}" -n ${namespace} > "${outputDir}/${logPrefix}-\${pod}.log" || true
-                kubectl --context=${kubeContext} logs "\${pod}" -n ${namespace} --previous > "${outputDir}/${logPrefix}-\${pod}.previous.log" || true
+                kubectl --context="\${kube_context}" describe pod "\${pod}" -n "\${namespace}" > "\${output_dir}/\${log_prefix}-\${pod}.describe.txt" || true
+                kubectl --context="\${kube_context}" logs "\${pod}" -n "\${namespace}" > "\${output_dir}/\${log_prefix}-\${pod}.log" || true
+                kubectl --context="\${kube_context}" logs "\${pod}" -n "\${namespace}" --previous > "\${output_dir}/\${log_prefix}-\${pod}.previous.log" || true
             done
         """
     } catch (Exception e) {
         println "Failed to collect APIM logs for namespace ${namespace}: ${e.message}"
     }
+}
+
+def shellQuote(String value) {
+    if (value == null) {
+        return "''"
+    }
+    return "'${value.replace(\"'\", \"'\\\"'\\\"'\")}'"
 }
 
 pipeline {
@@ -561,6 +619,7 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
+                    validatePipelineInputs(project, product, productVersion, productDeploymentRegion, osList, databaseList)
                     peerTestPatterns = resolvePeerTestPatterns(skipPeerTest)
 
                     println "OS List: ${osList}"
