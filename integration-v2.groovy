@@ -1169,14 +1169,7 @@ pipeline {
                                             }
                                         } catch (Exception e) {
                                             println "Deployment failed for ${stageId}: ${e}"
-                                            withCredentials([[
-                                                $class: 'AmazonWebServicesCredentialsBinding',
-                                                credentialsId: awsCred,
-                                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                            ]]) {
-                                                collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-deploy-failure")
-                                            }
+                                            collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-deploy-failure")
                                             error "Deployment failed for ${stageId}. Please check the logs for more details."
                                         }
                                     }
