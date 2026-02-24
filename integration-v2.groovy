@@ -511,8 +511,22 @@ def collectApimLogs(String kubeContext, String namespace, String outputDir, Stri
             set +e
             mkdir -p "${outputDir}"
 
-            if ! kubectl --context=${kubeContext} get namespace ${namespace} >/dev/null 2>&1; then
-                echo "Namespace ${namespace} not found. Skipping APIM log collection." > "${outputDir}/${logPrefix}-log-collection.txt"
+            if ! kubectl config get-contexts ${kubeContext} >/dev/null 2>&1; then
+                echo "Kubernetes context ${kubeContext} not found. Skipping APIM log collection." > "${outputDir}/${logPrefix}-log-collection.txt"
+                exit 0
+            fi
+
+            ns_check_output="\$(kubectl --context=${kubeContext} get namespace ${namespace} 2>&1)"
+            ns_check_exit=\$?
+            if [[ \$ns_check_exit -ne 0 ]]; then
+                if [[ "\$ns_check_output" == *"(NotFound)"* || "\$ns_check_output" == *"not found"* ]]; then
+                    echo "Namespace ${namespace} not found. Skipping APIM log collection." > "${outputDir}/${logPrefix}-log-collection.txt"
+                else
+                    {
+                        echo "Failed to access namespace ${namespace}. Skipping APIM log collection."
+                        echo "\$ns_check_output"
+                    } > "${outputDir}/${logPrefix}-log-collection.txt"
+                fi
                 exit 0
             fi
 
@@ -1110,7 +1124,14 @@ pipeline {
                                             }
                                         } catch (Exception e) {
                                             println "Deployment failed for ${stageId}: ${e}"
-                                            collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-deploy-failure")
+                                            withCredentials([[
+                                                $class: 'AmazonWebServicesCredentialsBinding',
+                                                credentialsId: awsCred,
+                                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]) {
+                                                collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-deploy-failure")
+                                            }
                                             error "Deployment failed for ${stageId}. Please check the logs for more details."
                                         }
                                     }
@@ -1182,7 +1203,14 @@ pipeline {
                                             println "Test execution failed for ${stageId}: ${e}"
                                             error "Test execution failed for ${stageId}. Please check the logs for more details."
                                         } finally {
-                                            collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-test")
+                                            withCredentials([[
+                                                $class: 'AmazonWebServicesCredentialsBinding',
+                                                credentialsId: awsCred,
+                                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]) {
+                                                collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-test")
+                                            }
                                         }
                                     }
                                 }
