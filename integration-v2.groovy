@@ -592,7 +592,7 @@ def shellQuote(String value) {
     if (value == null) {
         return "''"
     }
-    return "'${value.replace(\"'\", \"'\\\"'\\\"'\")}'"
+    return "'" + value.replace("'", "'\"'\"'") + "'"
 }
 
 pipeline {
