@@ -1169,7 +1169,14 @@ pipeline {
                                             }
                                         } catch (Exception e) {
                                             println "Deployment failed for ${stageId}: ${e}"
-                                            collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-deploy-failure")
+                                            withCredentials([[
+                                                $class: 'AmazonWebServicesCredentialsBinding',
+                                                credentialsId: awsCred,
+                                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]) {
+                                                collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-deploy-failure")
+                                            }
                                             error "Deployment failed for ${stageId}. Please check the logs for more details."
                                         }
                                     }
@@ -1241,7 +1248,14 @@ pipeline {
                                             println "Test execution failed for ${stageId}: ${e}"
                                             error "Test execution failed for ${stageId}. Please check the logs for more details."
                                         } finally {
-                                            collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-test")
+                                            withCredentials([[
+                                                $class: 'AmazonWebServicesCredentialsBinding',
+                                                credentialsId: awsCred,
+                                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]) {
+                                                collectApimLogs(patternDirSafe, namespace, branchLogsDir, "${branchLogPrefix}-test")
+                                            }
                                         }
                                     }
                                 }
