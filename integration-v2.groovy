@@ -71,7 +71,9 @@ String apimIntgRepoBranch = "${productVersion}-profile-automation"
 String apimIntgDirectory = "apim-test-integration"
 String tfDirectory = "terraform"
 String tfEnvironment = "dev"
+String collectedLogsDirectory = "collected-logs"
 String logsDirectory = "logs"
+String diagnosticsDirectory = "diagnostics"
 String apimPackDirectory = "wso2am"
 
 String githubCredentialId = "WSO2_GITHUB_TOKEN"
@@ -965,7 +967,7 @@ pipeline {
                                 def gwHost     = "gw-${hostSuffix}.wso2.com"
                                 def wsHost     = "websocket-${hostSuffix}.wso2.com"
                                 def websubHost = "websub-${hostSuffix}.wso2.com"
-                                def branchLogsDir = "${env.WORKSPACE}/${logsDirectory}"
+                                def branchLogsDir = "${env.WORKSPACE}/${collectedLogsDirectory}"
                                 def branchLogPrefix = "${patternSafe.os}-${dpName}-${dbEngineNameSafe}"
                                 
                                 // Add deployment task to parallel map
@@ -1316,7 +1318,21 @@ pipeline {
                     currentBuild.result = 'FAILURE'
                 } finally {
                     if (!onlyDestroyResources && !skipTests) {
+                        // Separate collected logs into two directories:
+                        //   logs/       -> only current .log files (developer-facing)
+                        //   diagnostics/ -> everything else (describe, events, previous logs, etc.)
+                        sh """#!/bin/bash
+                            set +e
+                            mkdir -p ${logsDirectory} ${diagnosticsDirectory}
+                            if [[ -d ${collectedLogsDirectory} ]]; then
+                                # Move current .log files (exclude .previous.log) into logs/
+                                find ${collectedLogsDirectory} -maxdepth 1 -name '*.log' ! -name '*.previous.log' -exec mv {} ${logsDirectory}/ \\;
+                                # Move everything else into diagnostics/
+                                find ${collectedLogsDirectory} -maxdepth 1 -type f -exec mv {} ${diagnosticsDirectory}/ \\;
+                            fi
+                        """
                         archiveArtifacts artifacts: "${logsDirectory}/**/*", fingerprint: true, allowEmptyArchive: true
+                        archiveArtifacts artifacts: "${diagnosticsDirectory}/**/*", fingerprint: true, allowEmptyArchive: true
                     }
                     // Clean up the workspace
                     cleanWs()
