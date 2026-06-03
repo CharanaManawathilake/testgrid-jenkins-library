@@ -163,32 +163,56 @@ post {
 def create_build_jobs(deploymentDirectory){
     return{
         stage("${deploymentDirectory}"){
-            stage("Deploy ${deploymentDirectory}") {
-                println "Deploying Stack:- ${deploymentDirectory}..."
-                sh'''
-                    ./scripts/deployment-handler.sh '''+deploymentDirectory+''' ${WORKSPACE}/${cloudformation_location} 
-                '''
-                stage("Testing ${deploymentDirectory}") {
-                    println "Deployment Integration testing..."
-                    script {
-                        if (test_groups != "") {
-                            def testGroups = test_groups.split(",")
-                                println "Test Groups ${testGroups}"
-                                for (productTestGroup in testGroups) {
-                                    println "Deploying Test for ${productTestGroup} for $deploymentDirectory"
-                                    executeTests(deploymentDirectory, productTestGroup)
-                                }
-                        } else {
-                            println "Deploying Test for $deploymentDirectory"
-                            sh '''
-                                 echo
-                                 ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script}
-                            '''
-                        }
+            script {
+                if (test_groups != "") {
+                    def testGroups = test_groups.split(",")
+                    println "Test Groups ${testGroups}"
+                    // Each test group gets its own isolated deployment (stack) so the
+                    // groups run in parallel against separate infrastructure instead
+                    // of sharing a single deployment.
+                    def group_jobs = [:]
+                    for (productTestGroup in testGroups) {
+                        def group = productTestGroup
+                        group_jobs["${deploymentDirectory}-${group}"] = create_group_deployment(deploymentDirectory, group)
+                    }
+                    parallel group_jobs
+                } else {
+                    // No test groups specified: keep the single deploy + test flow.
+                    deployStack(deploymentDirectory)
+                    stage("Testing ${deploymentDirectory}") {
+                        println "Deploying Test for $deploymentDirectory"
+                        sh '''
+                             echo
+                             ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script}
+                        '''
                     }
                 }
             }
         }
+    }
+}
+
+def create_group_deployment(deploymentDirectory, productTestGroup){
+    return {
+        stage("Group ${productTestGroup} (${deploymentDirectory})") {
+            // Prepare an isolated deployment directory & stack name for this test group.
+            def groupDeploymentDirectory = sh(
+                returnStdout: true,
+                script: "./scripts/prepare-group-deployment.sh ${deploymentDirectory} ${productTestGroup}"
+            ).trim()
+            println "Prepared group deployment directory: ${groupDeploymentDirectory}"
+            deployStack(groupDeploymentDirectory)
+            executeTests(groupDeploymentDirectory, productTestGroup)
+        }
+    }
+}
+
+def deployStack(deploymentDirectory){
+    stage("Deploy ${deploymentDirectory}") {
+        println "Deploying Stack:- ${deploymentDirectory}..."
+        sh'''
+            ./scripts/deployment-handler.sh '''+deploymentDirectory+''' ${WORKSPACE}/${cloudformation_location}
+        '''
     }
 }
 
