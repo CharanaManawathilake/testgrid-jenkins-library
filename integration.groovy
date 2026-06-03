@@ -162,8 +162,21 @@ stages {
 post {
     always {
         sh '''
-            echo "Job is completed... Deleting the workspace directories!"
+            echo "Job is completed... Cleaning up deployments!"
         '''
+        // Guarantee CloudFormation teardown no matter how the build ends (success,
+        // failure, or abort). During the normal flow stacks are deleted inside the test
+        // scripts, but an aborted/killed build interrupts those scripts before teardown
+        // runs, leaving stacks alive. This scans every deployment directory on disk and
+        // issues a delete for any stack still standing - and must run BEFORE cleanWs,
+        // which wipes the parameter files holding the stack names.
+        withCredentials([string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+        string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')])
+        {
+            sh '''
+                ./scripts/cleanup-deployments.sh
+            '''
+        }
         script {
             sendEmail(deploymentDirectories, updateType)
         }
