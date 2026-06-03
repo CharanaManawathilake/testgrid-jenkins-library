@@ -136,10 +136,22 @@ stages {
                 for (procDir in procDirList){
                     deploymentDirectories << procDir
                 }
+                // Build a single, flat parallel map so Blue Ocean can visualize it.
+                // Nested parallel (parallel-within-parallel) is not rendered by Blue
+                // Ocean, so each test group becomes its own top-level branch keyed by
+                // "<combo> :: <group>" instead of being nested under the combo.
                 def build_jobs = [:]
                 for (deploymentDirectory in deploymentDirectories){
                     println deploymentDirectory
-                    build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
+                    def dir = deploymentDirectory
+                    if (test_groups != "") {
+                        for (productTestGroup in test_groups.split(",")) {
+                            def group = productTestGroup
+                            build_jobs["${dir} :: ${group}"] = create_group_deployment(dir, group)
+                        }
+                    } else {
+                        build_jobs["${dir}"] = create_build_jobs(dir)
+                    }
                 }
 
                 parallel build_jobs
@@ -160,50 +172,32 @@ post {
 }
 }
 
+// No test groups specified: deploy the combination once and run the full suite.
 def create_build_jobs(deploymentDirectory){
     return{
-        stage("${deploymentDirectory}"){
-            script {
-                if (test_groups != "") {
-                    def testGroups = test_groups.split(",")
-                    println "Test Groups ${testGroups}"
-                    // Each test group gets its own isolated deployment (stack) so the
-                    // groups run in parallel against separate infrastructure instead
-                    // of sharing a single deployment.
-                    def group_jobs = [:]
-                    for (productTestGroup in testGroups) {
-                        def group = productTestGroup
-                        group_jobs["${deploymentDirectory}-${group}"] = create_group_deployment(deploymentDirectory, group)
-                    }
-                    parallel group_jobs
-                } else {
-                    // No test groups specified: keep the single deploy + test flow.
-                    deployStack(deploymentDirectory)
-                    stage("Testing ${deploymentDirectory}") {
-                        println "Deploying Test for $deploymentDirectory"
-                        sh '''
-                             echo
-                             ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script}
-                        '''
-                    }
-                }
-            }
+        deployStack(deploymentDirectory)
+        stage("Testing ${deploymentDirectory}") {
+            println "Deploying Test for $deploymentDirectory"
+            sh '''
+                 echo
+                 ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script}
+            '''
         }
     }
 }
 
+// One isolated deployment (stack) per test group. Returned as a flat parallel branch
+// from Stage 3 so Blue Ocean renders each group as its own top-level branch.
 def create_group_deployment(deploymentDirectory, productTestGroup){
     return {
-        stage("Group ${productTestGroup} (${deploymentDirectory})") {
-            // Prepare an isolated deployment directory & stack name for this test group.
-            def groupDeploymentDirectory = sh(
-                returnStdout: true,
-                script: "./scripts/prepare-group-deployment.sh ${deploymentDirectory} ${productTestGroup}"
-            ).trim()
-            println "Prepared group deployment directory: ${groupDeploymentDirectory}"
-            deployStack(groupDeploymentDirectory)
-            executeTests(groupDeploymentDirectory, productTestGroup)
-        }
+        // Prepare an isolated deployment directory & stack name for this test group.
+        def groupDeploymentDirectory = sh(
+            returnStdout: true,
+            script: "./scripts/prepare-group-deployment.sh ${deploymentDirectory} ${productTestGroup}"
+        ).trim()
+        println "Prepared group deployment directory: ${groupDeploymentDirectory}"
+        deployStack(groupDeploymentDirectory)
+        executeTests(groupDeploymentDirectory, productTestGroup)
     }
 }
 
