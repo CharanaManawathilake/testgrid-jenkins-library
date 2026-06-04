@@ -17,12 +17,22 @@
 # under the License.
 #
 # --------------------------------------------------------------------------------------
+#
+# Orchestrates the test flow for a single deployment. A phase can be supplied so the
+# pipeline can drive each part as its own step (small, fully-renderable logs):
+#
+#   clone       - clone the product test repo onto the slave
+#   setup|update|provisiondb|test|collect - delegated to intg-test-executer.sh
+#   teardown    - run post actions (stack deletion / log handling)
+#   ""|all      - clone, run the whole executer flow, then post actions (legacy default)
+# --------------------------------------------------------------------------------------
 
 deploymentName=$1
 productRepository=$2
 productTestBranch=$3
 productTestScript=$4
 productTestGroup=$5
+phase=$6
 currentScript=$(dirname $(realpath "$0"))
 
 deploymentDirectory="${WORKSPACE}/deployment/${deploymentName}"
@@ -62,29 +72,68 @@ function cloneTestRepo(){
     productDirectoryLocation="${deploymentDirectory}/${repoName}"
 }
 
-function deploymentTest(){
+function prepareOutputDir(){
     log_info "Creating output directory"
     if [ -d "${testOutputDir}" ]; then
         log_error "Output directory already exists. Removing the existing output directory."
         rm -r "${testOutputDir}"
     fi
     mkdir ${testOutputDir}
-    log_info "Executing scenario tests for ${productTestGroup}!"
-    bash ${currentScript}/intg-test-executer.sh "${deploymentDirectory}" "${testOutputDir}" "${productTestGroup}"
+}
+
+# Delegate a single phase to the executer. Returns the executer's exit code.
+function runExecuterPhase(){
+    local execPhase=$1
+    log_info "Executing scenario test phase '${execPhase}' for ${productTestGroup}!"
+    bash ${currentScript}/intg-test-executer.sh "${deploymentDirectory}" "${testOutputDir}" "${productTestGroup}" "${execPhase}"
+}
+
+function runPostActions(){
+    log_info "Executing post actions!"
+    bash ${currentScript}/post-actions.sh ${deploymentName}
+}
+
+# Legacy combined flow: prepare outputs, run every executer phase, then post actions
+# regardless of the test result.
+function deploymentTest(){
+    prepareOutputDir
+    runExecuterPhase "all"
     if [[ $? != 0 ]];
     then
-        log_error "Executing post actions!"
-        bash ${currentScript}/post-actions.sh ${deploymentName}
+        log_error "Test Execution Failed!"
+        runPostActions
         exit 1
     else
         log_info "Test Execution Passed!"
-        bash ${currentScript}/post-actions.sh ${deploymentName}
+        runPostActions
     fi
 }
 
 function main(){
-    cloneTestRepo
-    deploymentTest
+    case "${phase}" in
+        clone)
+            cloneTestRepo ;;
+        setup)
+            prepareOutputDir
+            runExecuterPhase "setup" || exit 1 ;;
+        update)
+            runExecuterPhase "update" || exit 1 ;;
+        provisiondb)
+            runExecuterPhase "provisiondb" || exit 1 ;;
+        test)
+            runExecuterPhase "test" || exit 1 ;;
+        collect)
+            # Best-effort report collection; never fail the build for this.
+            runExecuterPhase "collect" ;;
+        teardown)
+            runPostActions ;;
+        ""|all)
+            cloneTestRepo
+            deploymentTest ;;
+        *)
+            log_error "Unknown phase: ${phase}"
+            exit 1 ;;
+    esac
 }
 
 main

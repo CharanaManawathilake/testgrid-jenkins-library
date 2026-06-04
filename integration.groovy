@@ -189,13 +189,7 @@ post {
 def create_build_jobs(deploymentDirectory){
     return{
         deployStack(deploymentDirectory)
-        stage("Testing ${deploymentDirectory}") {
-            println "Deploying Test for $deploymentDirectory"
-            sh '''
-                 echo
-                 ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script}
-            '''
-        }
+        executeTests(deploymentDirectory, "")
     }
 }
 
@@ -223,14 +217,26 @@ def deployStack(deploymentDirectory){
     }
 }
 
+// Run the remote test flow as discrete stages so each step's log stays small enough
+// to render fully in Blue Ocean. The test run is wrapped in try/finally so reports are
+// always collected and the stack is always torn down, even when the tests fail.
 def executeTests(deploymentDirectory, productTestGroup) {
-    stage("Testing ${deploymentDirectory} with ${productTestGroup}") {
-        println "Executing test ${productTestGroup} for ${product_repository}"
-        sh '''
-             echo
-             ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script} ''' + productTestGroup + '''
-        '''
+    def label = productTestGroup ? "${productTestGroup} @ ${deploymentDirectory}" : "${deploymentDirectory}"
+    println "Executing test ${productTestGroup} for ${product_repository}"
+    try {
+        stage("Clone repo [${label}]")   { runTestPhase(deploymentDirectory, productTestGroup, "clone") }
+        stage("Setup node [${label}]")    { runTestPhase(deploymentDirectory, productTestGroup, "setup") }
+        stage("Apply update [${label}]")  { runTestPhase(deploymentDirectory, productTestGroup, "update") }
+        stage("Provision DB [${label}]")  { runTestPhase(deploymentDirectory, productTestGroup, "provisiondb") }
+        stage("Run tests [${label}]")     { runTestPhase(deploymentDirectory, productTestGroup, "test") }
+    } finally {
+        stage("Collect reports [${label}]") { runTestPhase(deploymentDirectory, productTestGroup, "collect") }
+        stage("Teardown [${label}]")        { runTestPhase(deploymentDirectory, productTestGroup, "teardown") }
     }
+}
+
+def runTestPhase(deploymentDirectory, productTestGroup, phase) {
+    sh "./scripts/intg-test-deployment.sh '${deploymentDirectory}' '${product_repository}' '${product_test_branch}' '${product_test_script}' '${productTestGroup}' ${phase}"
 }
 
 def sendEmail(deploymentDirectories, updateType) {
