@@ -217,21 +217,28 @@ def deployStack(deploymentDirectory){
     }
 }
 
-// Run the remote test flow as discrete stages so each step's log stays small enough
-// to render fully in Blue Ocean. The test run is wrapped in try/finally so reports are
+// Run the remote test flow as two stages (Test + Teardown) to keep the Blue Ocean
+// graph legible when many combination x group branches run in parallel - a large
+// stage count per branch makes the graph shrink and hide step detail. Each phase is
+// still a separate step within the stage (its own log line), so granularity is kept
+// without exploding the graph. The run is wrapped in try/finally so reports are
 // always collected and the stack is always torn down, even when the tests fail.
 def executeTests(deploymentDirectory, productTestGroup) {
     def label = productTestGroup ? "${productTestGroup} @ ${deploymentDirectory}" : "${deploymentDirectory}"
     println "Executing test ${productTestGroup} for ${product_repository}"
     try {
-        stage("Clone repo [${label}]")   { runTestPhase(deploymentDirectory, productTestGroup, "clone") }
-        stage("Setup node [${label}]")    { runTestPhase(deploymentDirectory, productTestGroup, "setup") }
-        stage("Apply update [${label}]")  { runTestPhase(deploymentDirectory, productTestGroup, "update") }
-        stage("Provision DB [${label}]")  { runTestPhase(deploymentDirectory, productTestGroup, "provisiondb") }
-        stage("Run tests [${label}]")     { runTestPhase(deploymentDirectory, productTestGroup, "test") }
+        stage("Test [${label}]") {
+            runTestPhase(deploymentDirectory, productTestGroup, "clone")
+            runTestPhase(deploymentDirectory, productTestGroup, "setup")
+            runTestPhase(deploymentDirectory, productTestGroup, "update")
+            runTestPhase(deploymentDirectory, productTestGroup, "provisiondb")
+            runTestPhase(deploymentDirectory, productTestGroup, "test")
+        }
     } finally {
-        stage("Collect reports [${label}]") { runTestPhase(deploymentDirectory, productTestGroup, "collect") }
-        stage("Teardown [${label}]")        { runTestPhase(deploymentDirectory, productTestGroup, "teardown") }
+        stage("Teardown [${label}]") {
+            runTestPhase(deploymentDirectory, productTestGroup, "collect")
+            runTestPhase(deploymentDirectory, productTestGroup, "teardown")
+        }
     }
 }
 
