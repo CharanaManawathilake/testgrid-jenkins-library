@@ -180,6 +180,10 @@ post {
         script {
             sendEmail(deploymentDirectories, updateType)
         }
+        // Publish the per-branch execution logs (one file per combination+group) as
+        // downloadable build artifacts. Must run BEFORE cleanWs wipes the workspace.
+        // Independent of Blue Ocean, so logs are always retrievable from the build page.
+        archiveArtifacts artifacts: 'build-logs/*.log', allowEmptyArchive: true
         cleanWs deleteDirs: true, notFailBuild: true
     }
 }
@@ -211,10 +215,25 @@ def create_group_deployment(deploymentDirectory, productTestGroup){
 def deployStack(deploymentDirectory){
     stage("Deploy ${deploymentDirectory}") {
         println "Deploying Stack:- ${deploymentDirectory}..."
-        sh'''
-            ./scripts/deployment-handler.sh '''+deploymentDirectory+''' ${WORKSPACE}/${cloudformation_location}
-        '''
+        shToBranchLog(deploymentDirectory,
+            "./scripts/deployment-handler.sh ${deploymentDirectory} ${env.WORKSPACE}/${cloudformation_location}")
     }
+}
+
+// Mirror a parallel branch's shell output into its own log file so per-group logs
+// don't interleave into one giant console log and survive Blue Ocean's flaky log
+// rendering. deploymentDirectory is the unique "<combo>-<group>" name, so each
+// combination+group gets its own file, archived as a build artifact in post{}.
+// Logs live under build-logs/ (NOT outputs/, which prepareOutputDir wipes on setup).
+// pipefail + PIPESTATUS keep the real exit code so a failing phase still fails the stage.
+def shToBranchLog(deploymentDirectory, command) {
+    def logFile = "${env.WORKSPACE}/build-logs/${deploymentDirectory}.log"
+    sh """#!/bin/bash
+set -o pipefail
+mkdir -p '${env.WORKSPACE}/build-logs'
+{ ${command} ; } 2>&1 | tee -a '${logFile}'
+exit \${PIPESTATUS[0]}
+"""
 }
 
 // Run the remote test flow as two stages (Test + Teardown) to keep the Blue Ocean
@@ -243,7 +262,8 @@ def executeTests(deploymentDirectory, productTestGroup) {
 }
 
 def runTestPhase(deploymentDirectory, productTestGroup, phase) {
-    sh "./scripts/intg-test-deployment.sh '${deploymentDirectory}' '${product_repository}' '${product_test_branch}' '${product_test_script}' '${productTestGroup}' ${phase}"
+    shToBranchLog(deploymentDirectory,
+        "./scripts/intg-test-deployment.sh '${deploymentDirectory}' '${product_repository}' '${product_test_branch}' '${product_test_script}' '${productTestGroup}' ${phase}")
 }
 
 def sendEmail(deploymentDirectories, updateType) {
