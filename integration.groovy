@@ -255,7 +255,13 @@ def executeTests(deploymentDirectory, productTestGroup) {
         }
     } finally {
         stage("Teardown [${label}]") {
-            runTestPhase(deploymentDirectory, productTestGroup, "collect")
+            // Report collection is best-effort: a collect failure must never block
+            // the teardown below, or the stack would leak until the post-build sweep.
+            try {
+                runTestPhase(deploymentDirectory, productTestGroup, "collect")
+            } catch (err) {
+                println "Report collection failed for ${label} (best-effort, continuing to teardown): ${err}"
+            }
             runTestPhase(deploymentDirectory, productTestGroup, "teardown")
         }
     }

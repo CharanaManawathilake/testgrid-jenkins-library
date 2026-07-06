@@ -24,7 +24,8 @@
 #   clone       - clone the product test repo onto the slave
 #   setup|update|provisiondb|test|collect - delegated to intg-test-executer.sh
 #   teardown    - run post actions (stack deletion / log handling)
-#   ""|all      - clone, run the whole executer flow, then post actions (legacy default)
+#   ""|all      - clone, run the whole executer flow, then post actions (legacy default;
+#                 not used by the pipeline, kept for manual invocation)
 # --------------------------------------------------------------------------------------
 
 deploymentName=$1
@@ -57,8 +58,8 @@ function cloneTestRepo(){
       git -C ${deploymentDirectory} clone ${cloneString} --branch ${productTestBranch}
       if [[ $? != 0 ]];
         then
+          # Teardown is owned by the pipeline's Teardown stage - just fail the phase.
           log_error "Testing repo clone failed! Please check if the Git credentials or the test repo name is correct."
-          bash ${currentScript}/post-actions.sh ${deploymentName}
           exit 1
         else
           log_info "Cloning the test repo was successfull!"
@@ -94,7 +95,8 @@ function runPostActions(){
 }
 
 # Legacy combined flow: prepare outputs, run every executer phase, then post actions
-# regardless of the test result.
+# regardless of the test result. NOT used by the pipeline (integration.groovy always
+# passes an explicit phase) - kept only for manual invocation.
 function deploymentTest(){
     prepareOutputDir
     runExecuterPhase "all"
@@ -124,7 +126,7 @@ function main(){
             runExecuterPhase "test" || exit 1 ;;
         collect)
             # Best-effort report collection; never fail the build for this.
-            runExecuterPhase "collect" ;;
+            runExecuterPhase "collect" || log_info "Report collection failed (best-effort); continuing" ;;
         teardown)
             runPostActions ;;
         ""|all)

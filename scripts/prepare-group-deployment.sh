@@ -36,23 +36,17 @@ source ${currentScript}/common-functions.sh
 baseDeploymentDir="${WORKSPACE}/deployment/${baseDeploymentName}"
 baseParameterFile="${baseDeploymentDir}/parameters.json"
 
-function generateRandomString(){
-    tr -dc A-Za-z0-9 </dev/urandom | head -c 8 ; echo ''
-}
-
-function removeSpecialCharacters(){
-    local stringValue=$1
-    echo "${stringValue}" | sed 's|[_.,/ ]||g'
-}
-
 sanitizedGroup=$(removeSpecialCharacters "${testGroup}")
 groupDeploymentName="${baseDeploymentName}-${sanitizedGroup}"
 groupDeploymentDir="${WORKSPACE}/deployment/${groupDeploymentName}"
 groupParameterFile="${groupDeploymentDir}/parameters.json"
 
-# An isolated directory + parameter file is created per test group
-mkdir -p "${groupDeploymentDir}"
-cp "${baseParameterFile}" "${groupParameterFile}"
+# An isolated directory + parameter file is created per test group. Every step below
+# must succeed - a partially prepared directory would leave this group running against
+# the base combination's StackName, colliding with the other groups' deployments and
+# teardown. The Jenkins caller checks the exit code, so fail hard instead.
+mkdir -p "${groupDeploymentDir}" || { log_error "Creating group deployment directory ${groupDeploymentDir} failed"; exit 1; }
+cp "${baseParameterFile}" "${groupParameterFile}" || { log_error "Copying base parameter file ${baseParameterFile} failed"; exit 1; }
 
 # Give this group its own stack name and unique identifier so the deployments,
 # log paths and teardown stay isolated from other groups in the same combination.
@@ -60,8 +54,8 @@ uniqueIdentifier=$(generateRandomString)
 baseStackName=$(extractParameters "StackName" "${groupParameterFile}")
 newStackName="${baseStackName}-${sanitizedGroup}-${uniqueIdentifier}"
 
-./scripts/write-parameter-file.sh "StackName" "${newStackName}" "${groupParameterFile}" 1>/dev/null
-./scripts/write-parameter-file.sh "UniqueIdentifier" "${uniqueIdentifier}" "${groupParameterFile}" 1>/dev/null
+${currentScript}/write-parameter-file.sh "StackName" "${newStackName}" "${groupParameterFile}" 1>/dev/null || { log_error "Writing StackName to ${groupParameterFile} failed"; exit 1; }
+${currentScript}/write-parameter-file.sh "UniqueIdentifier" "${uniqueIdentifier}" "${groupParameterFile}" 1>/dev/null || { log_error "Writing UniqueIdentifier to ${groupParameterFile} failed"; exit 1; }
 
 # Only the deployment directory name goes to stdout for the caller to capture.
 echo "${groupDeploymentName}"

@@ -83,15 +83,18 @@ SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFi
 MVNSTATE=1
 
 function phaseSetup(){
-    wget -q ${SCRIPT_LOCATION}
-    aws s3 cp 's3://integration-testgrid-resources/testgrid-key.pem' ${keyFileLocation}
-    chmod 400 ${keyFileLocation}
+    # Download into the per-deployment inputs dir (absolute path) - parallel group
+    # branches share the workspace CWD, so a bare wget here would race on one file.
+    local testScriptFile="${INPUTS_DIR}/${TEST_SCRIPT_NAME}"
+    wget -q -O "${testScriptFile}" ${SCRIPT_LOCATION} || { log_error "Downloading test script ${SCRIPT_LOCATION} failed"; return 1; }
+    aws s3 cp 's3://integration-testgrid-resources/testgrid-key.pem' ${keyFileLocation} || { log_error "Downloading testgrid key from S3 failed"; return 1; }
+    chmod 400 ${keyFileLocation} || { log_error "Setting permissions on ${keyFileLocation} failed"; return 1; }
 
     log_info "Copying ${TEST_SCRIPT_NAME} to remote ec2 instance"
-    scp ${SSH_OPTS} ${TEST_SCRIPT_NAME} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/${TEST_SCRIPT_NAME}
+    scp ${SSH_OPTS} ${testScriptFile} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/${TEST_SCRIPT_NAME} || { log_error "Copying ${TEST_SCRIPT_NAME} to remote instance failed"; return 1; }
 
     log_info "Copying ${INFRA_JSON} to remote ec2 instance"
-    scp ${SSH_OPTS} ${INFRA_JSON} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/infra.json
+    scp ${SSH_OPTS} ${INFRA_JSON} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/infra.json || { log_error "Copying ${INFRA_JSON} to remote instance failed"; return 1; }
 }
 
 function phaseUpdate(){
@@ -136,12 +139,15 @@ case "${phase}" in
     collect)
         phaseCollect ;;
     all)
+        # NOT used by the pipeline (intg-test-deployment.sh always passes a single
+        # phase) - kept for manual invocation.
         phaseSetup
         phaseUpdate
         phaseProvisionDb
         phaseTest
-        # Reports are collected even on test failure, then the status is enforced.
-        phaseCollect
+        # Reports are collected (best-effort) even on test failure, then the status
+        # is enforced.
+        phaseCollect || log_info "Report collection failed (best-effort); continuing"
         [[ ${MVNSTATE} != 0 ]] && exit 1
         exit 0 ;;
     *)

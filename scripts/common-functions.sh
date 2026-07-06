@@ -72,6 +72,19 @@ function writeJsonFile(){
     done
 }
 
+# 8-char alphanumeric suffix used to keep resource names (e.g. stack names) unique.
+# LC_ALL=C keeps tr from choking on urandom bytes under UTF-8 locales.
+function generateRandomString(){
+    LC_ALL=C tr -dc A-Za-z0-9 </dev/urandom | head -c 8 ; echo ''
+}
+
+# Sanitize a value for use inside CloudFormation stack names, which only allow
+# [a-zA-Z][-a-zA-Z0-9]*. Whitelist rather than strip known-bad characters.
+function removeSpecialCharacters(){
+    local stringValue=$1
+    echo "${stringValue}" | sed 's|[^A-Za-z0-9-]||g'
+}
+
 # Logging functions
 function log_info() {
     local string=$@
