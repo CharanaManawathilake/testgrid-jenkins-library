@@ -136,10 +136,22 @@ stages {
                 for (procDir in procDirList){
                     deploymentDirectories << procDir
                 }
+                // Build a single, flat parallel map so Blue Ocean can visualize it.
+                // Nested parallel (parallel-within-parallel) is not rendered by Blue
+                // Ocean, so each test group becomes its own top-level branch keyed by
+                // "<combo> :: <group>" instead of being nested under the combo.
                 def build_jobs = [:]
                 for (deploymentDirectory in deploymentDirectories){
                     println deploymentDirectory
-                    build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
+                    def dir = deploymentDirectory
+                    if (test_groups != "") {
+                        for (productTestGroup in test_groups.split(",")) {
+                            def group = productTestGroup
+                            build_jobs["${dir} :: ${group}"] = create_group_deployment(dir, group)
+                        }
+                    } else {
+                        build_jobs["${dir}"] = create_build_jobs(dir)
+                    }
                 }
 
                 parallel build_jobs
@@ -150,56 +162,108 @@ stages {
 post {
     always {
         sh '''
-            echo "Job is completed... Deleting the workspace directories!"
+            echo "Job is completed... Cleaning up deployments!"
         '''
+        // Guarantee CloudFormation teardown no matter how the build ends (success,
+        // failure, or abort). During the normal flow stacks are deleted inside the test
+        // scripts, but an aborted/killed build interrupts those scripts before teardown
+        // runs, leaving stacks alive. This scans every deployment directory on disk and
+        // issues a delete for any stack still standing - and must run BEFORE cleanWs,
+        // which wipes the parameter files holding the stack names.
+        withCredentials([string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+        string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')])
+        {
+            sh '''
+                ./scripts/cleanup-deployments.sh
+            '''
+        }
         script {
             sendEmail(deploymentDirectories, updateType)
         }
+        // Publish the per-branch execution logs (one file per combination+group) as
+        // downloadable build artifacts. Must run BEFORE cleanWs wipes the workspace.
+        // Independent of Blue Ocean, so logs are always retrievable from the build page.
+        archiveArtifacts artifacts: 'build-logs/*.log', allowEmptyArchive: true
         cleanWs deleteDirs: true, notFailBuild: true
     }
 }
 }
 
+// No test groups specified: deploy the combination once and run the full suite.
 def create_build_jobs(deploymentDirectory){
     return{
-        stage("${deploymentDirectory}"){
-            stage("Deploy ${deploymentDirectory}") {
-                println "Deploying Stack:- ${deploymentDirectory}..."
-                sh'''
-                    ./scripts/deployment-handler.sh '''+deploymentDirectory+''' ${WORKSPACE}/${cloudformation_location} 
-                '''
-                stage("Testing ${deploymentDirectory}") {
-                    println "Deployment Integration testing..."
-                    script {
-                        if (test_groups != "") {
-                            def testGroups = test_groups.split(",")
-                                println "Test Groups ${testGroups}"
-                                for (productTestGroup in testGroups) {
-                                    println "Deploying Test for ${productTestGroup} for $deploymentDirectory"
-                                    executeTests(deploymentDirectory, productTestGroup)
-                                }
-                        } else {
-                            println "Deploying Test for $deploymentDirectory"
-                            sh '''
-                                 echo
-                                 ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script}
-                            '''
-                        }
-                    }
-                }
-            }
+        deployStack(deploymentDirectory)
+        executeTests(deploymentDirectory, "")
+    }
+}
+
+// One isolated deployment (stack) per test group. Returned as a flat parallel branch
+// from Stage 3 so Blue Ocean renders each group as its own top-level branch.
+def create_group_deployment(deploymentDirectory, productTestGroup){
+    return {
+        // Prepare an isolated deployment directory & stack name for this test group.
+        def groupDeploymentDirectory = sh(
+            returnStdout: true,
+            script: "./scripts/prepare-group-deployment.sh ${deploymentDirectory} ${productTestGroup}"
+        ).trim()
+        println "Prepared group deployment directory: ${groupDeploymentDirectory}"
+        deployStack(groupDeploymentDirectory)
+        executeTests(groupDeploymentDirectory, productTestGroup)
+    }
+}
+
+def deployStack(deploymentDirectory){
+    stage("Deploy ${deploymentDirectory}") {
+        println "Deploying Stack:- ${deploymentDirectory}..."
+        shToBranchLog(deploymentDirectory,
+            "./scripts/deployment-handler.sh ${deploymentDirectory} ${env.WORKSPACE}/${cloudformation_location}")
+    }
+}
+
+// Mirror a parallel branch's shell output into its own log file so per-group logs
+// don't interleave into one giant console log and survive Blue Ocean's flaky log
+// rendering. deploymentDirectory is the unique "<combo>-<group>" name, so each
+// combination+group gets its own file, archived as a build artifact in post{}.
+// Logs live under build-logs/ (NOT outputs/, which prepareOutputDir wipes on setup).
+// pipefail + PIPESTATUS keep the real exit code so a failing phase still fails the stage.
+def shToBranchLog(deploymentDirectory, command) {
+    def logFile = "${env.WORKSPACE}/build-logs/${deploymentDirectory}.log"
+    sh """#!/bin/bash
+set -o pipefail
+mkdir -p '${env.WORKSPACE}/build-logs'
+{ ${command} ; } 2>&1 | tee -a '${logFile}'
+exit \${PIPESTATUS[0]}
+"""
+}
+
+// Run the remote test flow as two stages (Test + Teardown) to keep the Blue Ocean
+// graph legible when many combination x group branches run in parallel - a large
+// stage count per branch makes the graph shrink and hide step detail. Each phase is
+// still a separate step within the stage (its own log line), so granularity is kept
+// without exploding the graph. The run is wrapped in try/finally so reports are
+// always collected and the stack is always torn down, even when the tests fail.
+def executeTests(deploymentDirectory, productTestGroup) {
+    def label = productTestGroup ? "${productTestGroup} @ ${deploymentDirectory}" : "${deploymentDirectory}"
+    println "Executing test ${productTestGroup} for ${product_repository}"
+    try {
+        stage("Test [${label}]") {
+            runTestPhase(deploymentDirectory, productTestGroup, "clone")
+            runTestPhase(deploymentDirectory, productTestGroup, "setup")
+            runTestPhase(deploymentDirectory, productTestGroup, "update")
+            runTestPhase(deploymentDirectory, productTestGroup, "provisiondb")
+            runTestPhase(deploymentDirectory, productTestGroup, "test")
+        }
+    } finally {
+        stage("Teardown [${label}]") {
+            runTestPhase(deploymentDirectory, productTestGroup, "collect")
+            runTestPhase(deploymentDirectory, productTestGroup, "teardown")
         }
     }
 }
 
-def executeTests(deploymentDirectory, productTestGroup) {
-    stage("Testing ${deploymentDirectory} with ${productTestGroup}") {
-        println "Executing test ${productTestGroup} for ${product_repository}"
-        sh '''
-             echo
-             ./scripts/intg-test-deployment.sh ''' + deploymentDirectory + ''' ${product_repository} ${product_test_branch} ${product_test_script} ''' + productTestGroup + '''
-        '''
-    }
+def runTestPhase(deploymentDirectory, productTestGroup, phase) {
+    shToBranchLog(deploymentDirectory,
+        "./scripts/intg-test-deployment.sh '${deploymentDirectory}' '${product_repository}' '${product_test_branch}' '${product_test_script}' '${productTestGroup}' ${phase}")
 }
 
 def sendEmail(deploymentDirectories, updateType) {

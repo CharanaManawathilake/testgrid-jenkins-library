@@ -17,8 +17,21 @@
 # under the License.
 #
 # --------------------------------------------------------------------------------------
-
-set -o xtrace
+#
+# Runs the remote integration test flow against a deployed instance. The flow is split
+# into phases so the pipeline can invoke each as a separate step, keeping per-step logs
+# small enough to render fully in Blue Ocean:
+#
+#   setup       - download the SSH key and copy the test script + infra.json to the node
+#   update      - apply the WUM/U2/staging update on the node
+#   provisiondb - provision the database on the node
+#   test        - run the test script on the node (fails the step if tests fail)
+#   collect     - copy the surefire reports back to the slave
+#   all         - run every phase in order (backward-compatible default)
+#
+# Note: xtrace and ssh/scp -v were intentionally NOT enabled here - they produce huge
+# logs (and xtrace would leak the WUM/Git credentials passed on the ssh command lines).
+# --------------------------------------------------------------------------------------
 
 currentScript=$(dirname $(realpath "$0"))
 source ${currentScript}/common-functions.sh
@@ -26,6 +39,8 @@ source ${currentScript}/common-functions.sh
 INPUTS_DIR=$1
 OUTPUTS_DIR=$2
 productTestGroup=$3
+phase=${4:-all}
+
 PROP_FILE="${INPUTS_DIR}/deployment.properties"
 WSO2InstanceName=$(grep -w "WSO2InstanceName" ${PROP_FILE} | cut -d'=' -f2 | cut -d"/" -f3)
 OperatingSystem=$(grep -w "OperatingSystem" ${PROP_FILE} | cut -d'=' -f2)
@@ -51,47 +66,85 @@ else
     INFRA_JSON=$INPUTS_DIR/../../scripts/${PRODUCT_NAME}/intg/infra.json
 fi
 
-wget -q ${SCRIPT_LOCATION}
-
-if [[ ${OperatingSystem} == "Ubuntu" ]]; 
+if [[ ${OperatingSystem} == "Ubuntu" ]];
 then
     instanceUser="ubuntu"
-elif [[ ${OperatingSystem} == "CentOS" ]]; 
+elif [[ ${OperatingSystem} == "CentOS" ]];
 then
     instanceUser="centos"
 else
     instanceUser="ec2-user"
 fi
-aws s3 cp 's3://integration-testgrid-resources/testgrid-key.pem' ${keyFileLocation}
-chmod 400 ${keyFileLocation}
 
-log_info "Copying ${TEST_SCRIPT_NAME} to remote ec2 instance"
-scp -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFileLocation} ${TEST_SCRIPT_NAME} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/${TEST_SCRIPT_NAME}
+# Common SSH/SCP options - StrictHostKeyChecking disabled for ephemeral test instances.
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFileLocation}"
 
-log_info "Copying ${INFRA_JSON} to remote ec2 instance"
-scp -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFileLocation} ${INFRA_JSON} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/infra.json
-
-log_info "Executing /opt/testgrid/workspace/wso2-update.sh on remote Instance"
-ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFileLocation} $instanceUser@${WSO2InstanceName} "cd /opt/testgrid/workspace && sudo bash /opt/testgrid/workspace/wso2-update.sh" "'$WUM_USERNAME'" "'$WUM_PASSWORD'" "'$TEST_MODE'" 
-
-log_info "Executing /opt/testgrid/workspace/provision_db_${PRODUCT_NAME}.sh on remote Instance"
-ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFileLocation} $instanceUser@${WSO2InstanceName} "cd /opt/testgrid/workspace && sudo bash /opt/testgrid/workspace/provision_db_${PRODUCT_NAME}.sh"
-
-# Setting the test status as failed
+# Test status, flipped by phaseTest. Defaults to failed until proven otherwise.
 MVNSTATE=1
-log_info "Executing ${TEST_SCRIPT_NAME} on remote Instance for ${productTestGroup}"
-ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFileLocation} $instanceUser@${WSO2InstanceName} "cd /opt/testgrid/workspace && sudo bash ${TEST_SCRIPT_NAME} ${PRODUCT_GIT_URL} ${PRODUCT_GIT_BRANCH} ${PRODUCT_NAME} ${PRODUCT_VERSION} ${GIT_USER} ${GIT_PASS} ${TEST_MODE} ${productTestGroup}"
-# Getting the test status
-MVNSTATE=$?
 
-mkdir -p ${OUTPUTS_DIR}/scenarios/integration-tests
-log_info "Coping Surefire Reports to TestGrid Slave..."
-scp -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${keyFileLocation}  -r ${instanceUser}@${WSO2InstanceName}:/opt/testgrid/workspace/${PRODUCT_GIT_REPO_NAME}/${TEST_REPORTS_DIR}/surefire-reports ${OUTPUTS_DIR}/scenarios/integration-tests/.
+function phaseSetup(){
+    wget -q ${SCRIPT_LOCATION}
+    aws s3 cp 's3://integration-testgrid-resources/testgrid-key.pem' ${keyFileLocation}
+    chmod 400 ${keyFileLocation}
 
-if [[ ${MVNSTATE} != 0 ]];
+    log_info "Copying ${TEST_SCRIPT_NAME} to remote ec2 instance"
+    scp ${SSH_OPTS} ${TEST_SCRIPT_NAME} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/${TEST_SCRIPT_NAME}
+
+    log_info "Copying ${INFRA_JSON} to remote ec2 instance"
+    scp ${SSH_OPTS} ${INFRA_JSON} $instanceUser@${WSO2InstanceName}:/opt/testgrid/workspace/infra.json
+}
+
+function phaseUpdate(){
+    log_info "Executing /opt/testgrid/workspace/wso2-update.sh on remote Instance"
+    ssh ${SSH_OPTS} $instanceUser@${WSO2InstanceName} "cd /opt/testgrid/workspace && sudo bash /opt/testgrid/workspace/wso2-update.sh" "'$WUM_USERNAME'" "'$WUM_PASSWORD'" "'$TEST_MODE'"
+}
+
+function phaseProvisionDb(){
+    log_info "Executing /opt/testgrid/workspace/provision_db_${PRODUCT_NAME}.sh on remote Instance"
+    ssh ${SSH_OPTS} $instanceUser@${WSO2InstanceName} "cd /opt/testgrid/workspace && sudo bash /opt/testgrid/workspace/provision_db_${PRODUCT_NAME}.sh"
+}
+
+function phaseTest(){
+    log_info "Executing ${TEST_SCRIPT_NAME} on remote Instance for ${productTestGroup}"
+    ssh ${SSH_OPTS} $instanceUser@${WSO2InstanceName} "cd /opt/testgrid/workspace && sudo bash ${TEST_SCRIPT_NAME} ${PRODUCT_GIT_URL} ${PRODUCT_GIT_BRANCH} ${PRODUCT_NAME} ${PRODUCT_VERSION} ${GIT_USER} ${GIT_PASS} ${TEST_MODE} ${productTestGroup}"
+    MVNSTATE=$?
+    if [[ ${MVNSTATE} != 0 ]];
     then
         log_error "Integration test was failed. Please check the logs"
-        exit 1
     else
         log_info "Integration test was successful!"
-fi
+    fi
+}
+
+function phaseCollect(){
+    mkdir -p ${OUTPUTS_DIR}/scenarios/integration-tests
+    log_info "Coping Surefire Reports to TestGrid Slave..."
+    scp ${SSH_OPTS} -r ${instanceUser}@${WSO2InstanceName}:/opt/testgrid/workspace/${PRODUCT_GIT_REPO_NAME}/${TEST_REPORTS_DIR}/surefire-reports ${OUTPUTS_DIR}/scenarios/integration-tests/.
+}
+
+case "${phase}" in
+    setup)
+        phaseSetup ;;
+    update)
+        phaseUpdate ;;
+    provisiondb)
+        phaseProvisionDb ;;
+    test)
+        phaseTest
+        [[ ${MVNSTATE} != 0 ]] && exit 1
+        exit 0 ;;
+    collect)
+        phaseCollect ;;
+    all)
+        phaseSetup
+        phaseUpdate
+        phaseProvisionDb
+        phaseTest
+        # Reports are collected even on test failure, then the status is enforced.
+        phaseCollect
+        [[ ${MVNSTATE} != 0 ]] && exit 1
+        exit 0 ;;
+    *)
+        log_error "Unknown phase: ${phase}"
+        exit 1 ;;
+esac
