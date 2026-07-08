@@ -124,17 +124,17 @@ function phaseCollect(){
     log_info "Coping Surefire Reports to TestGrid Slave..."
 
     local repoRoot="/opt/testgrid/workspace/${PRODUCT_GIT_REPO_NAME}"
-    local configured="${repoRoot}/${TEST_REPORTS_DIR}/surefire-reports"
-
-    # Resolve the surefire-reports directory on the remote instance. Prefer the
-    # configured path (SurefireReportDir); if it is absent, discover it. The
+    # Configured path (SurefireReportDir) and the all-in-one-apim variant. The
     # module layout differs across product versions - e.g. APIM 4.5.0/4.6.0/4.7.0
     # nest the tests under an extra 'all-in-one-apim' directory - so a single
-    # hardcoded path cannot cover every version.
+    # hardcoded path cannot cover every version. Check both known locations and
+    # use whichever exists on the remote instance.
+    local configured="${repoRoot}/${TEST_REPORTS_DIR}/surefire-reports"
+    local allInOne="${repoRoot}/all-in-one-apim/${TEST_REPORTS_DIR}/surefire-reports"
     local remoteDir
     remoteDir=$(ssh ${SSH_OPTS} ${instanceUser}@${WSO2InstanceName} \
         "if [ -d '${configured}' ]; then echo '${configured}'; \
-         else find '${repoRoot}' -type d -name surefire-reports 2>/dev/null | head -1; fi")
+         elif [ -d '${allInOne}' ]; then echo '${allInOne}'; fi")
 
     if [[ -z "${remoteDir}" ]]; then
         log_info "No surefire-reports directory found on remote for ${productTestGroup}; skipping report collection"
