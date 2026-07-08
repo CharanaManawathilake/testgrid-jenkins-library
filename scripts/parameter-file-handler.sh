@@ -21,6 +21,7 @@
 product=$1
 productVersion=$2
 updateLevel=$3
+currentScript=$(dirname $(realpath "$0"))
 source ${currentScript}/common-functions.sh
 
 originalParameteFilePath="${WORKSPACE}/parameters/parameters.json"
@@ -30,16 +31,6 @@ testType=$(extractParameters "TestType" ${parameterFilePath})
 osArray=(`echo ${os_list} | sed 's/,/\n/g'`)
 jdkArray=(`echo ${jdk_list} | sed 's/,/\n/g'`)
 dbArray=(`echo ${database_list} | sed 's/,/\n/g'`)
-
-function generateRandomString(){
-    tr -dc A-Za-z0-9 </dev/urandom | head -c 8 ; echo ''
-}
-
-function removeSpecialCharacters(){
-    stringValue=$1
-    removedString=$(echo "${stringValue}" | sed 's|[_.,]||g' )
-    echo ${removedString}
-}
 
 for os in ${osArray[@]}; do
     for jdk in ${jdkArray[@]}; do

@@ -31,16 +31,6 @@ osArray=(`echo ${os_list} | sed 's/,/\n/g'`)
 jdkArray=(`echo ${jdk_list} | sed 's/,/\n/g'`)
 dbArray=(`echo ${database_list} | sed 's/,/\n/g'`)
 
-function generateRandomString(){
-    tr -dc A-Za-z0-9 </dev/urandom | head -c 8 ; echo ''
-}
-
-function removeSpecialCharacters(){
-    stringValue=$1
-    removedString=$(echo "${stringValue}" | sed 's|[_.,]||g' )
-    echo ${removedString}
-}
-
 echo "Creating the deployment directories by using infrastructure combination!"
 for os in ${osArray[@]}; do
     for jdk in ${jdkArray[@]}; do

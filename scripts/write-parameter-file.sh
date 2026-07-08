@@ -21,14 +21,17 @@
 required_variables=3
 
 if [ $# -ne ${required_variables} ]; then
-    log_error "${required_variables} variables required"
-    exit 0
-else
-    parameter_variable=${1}
-    parameter_value=${2}
-    parameter_file_path="${3}"
-    contents="$(jq --arg parameter_variable "$parameter_variable" \
-    --arg parameter_value "$parameter_value" \
-    '.Parameters[$parameter_variable] = $parameter_value' $parameter_file_path)" && \
-    echo "${contents}" > $parameter_file_path
+    echo "[ERROR]: ${required_variables} variables required (parameter name, value, file path)" >&2
+    exit 1
 fi
+
+parameter_variable=${1}
+parameter_value=${2}
+parameter_file_path="${3}"
+contents="$(jq --arg parameter_variable "$parameter_variable" \
+--arg parameter_value "$parameter_value" \
+'.Parameters[$parameter_variable] = $parameter_value' $parameter_file_path)" || {
+    echo "[ERROR]: Updating ${parameter_variable} in ${parameter_file_path} failed" >&2
+    exit 1
+}
+echo "${contents}" > $parameter_file_path
