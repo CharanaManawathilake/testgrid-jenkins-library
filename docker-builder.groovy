@@ -155,9 +155,9 @@ pipeline {
                                 export UPDATE_LEVEL='$update_level'
                                 if [ $UPDATE_LEVEL -gt 0 ];
                                 then
-                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username '$WUM_USERNAME' --password '$WUM_PASSWORD' --level '$UPDATE_LEVEL' --backup ./
+                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username "\$WUM_USERNAME" --password "\$WUM_PASSWORD" --level "\$UPDATE_LEVEL" --backup ./
                                 else
-                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username '$WUM_USERNAME' --password '$WUM_PASSWORD' --backup ./
+                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username "\$WUM_USERNAME" --password "\$WUM_PASSWORD" --backup ./
                                 fi
                                 """,
                                 returnStatus: true)
@@ -183,9 +183,9 @@ pipeline {
                                 export UPDATE_LEVEL='$update_level'
                                 if [ $UPDATE_LEVEL -gt 0 ];
                                 then
-                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username '$WUM_USERNAME' --password '$WUM_PASSWORD' --level '$UPDATE_LEVEL' --no-backup
+                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username "\$WUM_USERNAME" --password "\$WUM_PASSWORD" --level "\$UPDATE_LEVEL" --no-backup
                                 else
-                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username '$WUM_USERNAME' --password '$WUM_PASSWORD' --no-backup
+                                    $WSO2_PRODUCT-$WSO2_PRODUCT_VERSION/bin/wso2update_linux --username "\$WUM_USERNAME" --password "\$WUM_PASSWORD" --no-backup
                                 fi
                                 """,
                                     returnStatus: true)
