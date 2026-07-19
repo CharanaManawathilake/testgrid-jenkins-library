@@ -67,7 +67,7 @@ stages {
                         echo "Writting AWS-Secret Access Key to parameter file"
                         ./scripts/write-parameter-file.sh "AWSAccessKeySecret" ${secretAccessKey} "${WORKSPACE}/parameters/parameters.json"
                         echo "Writting WUM Password to parameter file"
-                        ./scripts/write-parameter-file.sh "WUMPassword" ${wumPassword} "${WORKSPACE}/parameters/parameters.json"
+                        ./scripts/write-parameter-file.sh "WUMPassword" "${wumPassword}" "${WORKSPACE}/parameters/parameters.json"
                         echo "Writting WUM Username to parameter file"
                         ./scripts/write-parameter-file.sh "WUMUsername" ${wumUserName} "${WORKSPACE}/parameters/parameters.json"
                         echo "Writting DB password to parameter file"

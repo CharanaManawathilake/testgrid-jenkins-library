@@ -47,7 +47,7 @@ OperatingSystem=$(grep -w "OperatingSystem" ${PROP_FILE} | cut -d'=' -f2)
 PRODUCT_VERSION=$(grep -w "ProductVersion" ${PROP_FILE}| cut -d'=' -f2)
 PRODUCT_NAME=$(grep -w "Product" ${PROP_FILE}| cut -d'=' -f2 | cut -d'-' -f1)
 WUM_USERNAME=$(grep -w "WUMUsername" ${PROP_FILE} | cut -d'=' -f2)
-WUM_PASSWORD=$(grep -w "WUMPassword" ${PROP_FILE} | cut -d'=' -f2)
+WUM_PASSWORD=$(grep -w "WUMPassword" "${PROP_FILE}" | cut -d'=' -f2-)
 PRODUCT_GIT_URL=$(grep -w "ProductRepository" ${PROP_FILE} | cut -d'=' -f2 | cut -d'/' -f3-)
 PRODUCT_GIT_BRANCH=$(grep -w "ProductTestBranch" ${PROP_FILE} | cut -d'=' -f2)
 GIT_USER=$(grep -w "GithubUserName" ${PROP_FILE} | cut -d'=' -f2)
@@ -99,7 +99,17 @@ function phaseSetup(){
 
 function phaseUpdate(){
     log_info "Executing /opt/testgrid/workspace/wso2-update.sh on remote Instance"
-    ssh ${SSH_OPTS} $instanceUser@${WSO2InstanceName} "cd /opt/testgrid/workspace && sudo bash /opt/testgrid/workspace/wso2-update.sh" "'$WUM_USERNAME'" "'$WUM_PASSWORD'" "'$TEST_MODE'"
+
+    # ssh joins its command arguments into a command line interpreted by the remote
+    # shell. Escape each value for that second shell so credentials containing a
+    # single quote (or any other shell metacharacter) remain one literal argument.
+    local escapedUsername escapedPassword escapedTestMode remoteCommand
+    printf -v escapedUsername '%q' "${WUM_USERNAME}"
+    printf -v escapedPassword '%q' "${WUM_PASSWORD}"
+    printf -v escapedTestMode '%q' "${TEST_MODE}"
+    remoteCommand="cd /opt/testgrid/workspace && sudo bash /opt/testgrid/workspace/wso2-update.sh ${escapedUsername} ${escapedPassword} ${escapedTestMode}"
+
+    ssh ${SSH_OPTS} "$instanceUser@${WSO2InstanceName}" "${remoteCommand}"
 }
 
 function phaseProvisionDb(){
