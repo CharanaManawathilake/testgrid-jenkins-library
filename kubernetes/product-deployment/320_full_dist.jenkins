@@ -257,7 +257,14 @@ pipeline {
                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                     ]]) {
-                        sh "./kubernetes/product-deployment/scripts/deploy.sh ${product_name} ${WUM_USER} ${WUM_PWD}"
+                        withEnv(["PRODUCT_NAME=${product_name}"]) {
+                            sh '''
+                                ./kubernetes/product-deployment/scripts/deploy.sh \
+                                    "$PRODUCT_NAME" \
+                                    "$WUM_USER" \
+                                    "$WUM_PWD"
+                            '''
+                        }
                     }
                 }
             }
