@@ -21,7 +21,7 @@ import hudson.model.*
 
 def deploymentDirectories = []
 def updateType = ""
-def s3BucketName = "testgrid-pipeline-logs"
+def s3BucketName = "test-testgrid-pipeline-logs"
 def s3BuildLogPath = ""
 def s3PathConstructor = ""
 
