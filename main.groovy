@@ -26,7 +26,7 @@ def s3BuildLogPath = ""
 def s3PathConstructor = ""
 
 pipeline {
-agent {label 'pipeline-agent'}
+agent {label 'ec2-hello'}
 stages {
     stage('Clone CFN repo') {
         steps {
