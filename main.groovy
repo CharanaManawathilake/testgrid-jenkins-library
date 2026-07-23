@@ -76,7 +76,6 @@ stages {
                     sh '''
                         echo "Writting AWS-Access Key ID to parameter file"
                         ./scripts/write-parameter-file.sh "AWSAccessKeyId" ${accessKey} "${WORKSPACE}/parameters/parameters.json"
-                    '''
                         // echo "Writting AWS-Secret Access Key to parameter file"
                         // ./scripts/write-parameter-file.sh "AWSAccessKeySecret" ${secretAccessKey} "${WORKSPACE}/parameters/parameters.json"
                         // echo "Writting WUM Password to parameter file"
@@ -91,6 +90,7 @@ stages {
                         // ./scripts/write-parameter-file.sh "S3SecretAccessKey" ${s3secretKey} "${WORKSPACE}/parameters/parameters.json"
                         // echo "Writing testgrid email key to parameter file"
                         // ./scripts/write-parameter-file.sh "TESTGRID_EMAIL_PASSWORD" ${testgridEmailPassword} "${WORKSPACE}/parameters/parameters.json"
+                    '''
                 }
                 // withCredentials([usernamePassword(credentialsId: 'WSO2_GITHUB_TOKEN', usernameVariable: 'githubUserName', passwordVariable: 'githubPassword')]) 
                 // {
