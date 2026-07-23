@@ -112,16 +112,16 @@ stages {
                     echo "Writing custom URL to parameter file"
                     ./scripts/write-parameter-file.sh "CustomURL" ${custom_url} "${WORKSPACE}/parameters/parameters.json"
                 '''
-                // //Generate S3 Log output path
-                // s3BuildLogPath = "${s3BucketName}/artifacts/jobs/${s3PathConstructor}/${product}-${product_version}/build-${BUILD_NUMBER}"
-                // println "Your Logs will be uploaded to: s3://"+s3BuildLogPath
-                // sh'''
-                //     echo "Writting S3 Log uploading endpoint to parameter file"
-                //     ./scripts/write-parameter-file.sh "S3OutputBucketLocation" '''+s3BuildLogPath+''' "${WORKSPACE}/parameters/parameters.json"
-                //     echo "Writing to parameter file completed!"
-                //     echo --- Preparing parameter files for deployments! ---
-                //     ./scripts/deployment-builder.sh ${product} ${product_version} '''+updateType+'''
-                // '''
+                //Generate S3 Log output path
+                s3BuildLogPath = "${s3BucketName}/artifacts/jobs/${s3PathConstructor}/${product}-${product_version}/build-${BUILD_NUMBER}"
+                println "Your Logs will be uploaded to: s3://"+s3BuildLogPath
+                sh'''
+                    echo "Writting S3 Log uploading endpoint to parameter file"
+                    ./scripts/write-parameter-file.sh "S3OutputBucketLocation" '''+s3BuildLogPath+''' "${WORKSPACE}/parameters/parameters.json"
+                    echo "Writing to parameter file completed!"
+                    echo --- Preparing parameter files for deployments! ---
+                    ./scripts/deployment-builder.sh ${product} ${product_version} '''+updateType+'''
+                '''
             }
         }
     }
