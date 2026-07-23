@@ -138,12 +138,10 @@ stages {
                     deploymentDirectories << procDir
                 }
                 def build_jobs = [:]
-
-                println deploymentDirectories
-    //             for (deploymentDirectory in deploymentDirectories){
-    //                 println deploymentDirectory
-    //                 build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
-    //             }
+                for (deploymentDirectory in deploymentDirectories){
+                    println deploymentDirectory
+                    build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
+                }
 
     //             parallel build_jobs
             }
@@ -170,36 +168,36 @@ stages {
 // }
 }
 
-// def create_build_jobs(deploymentDirectory){
-//     return{
-//         stage("${deploymentDirectory}"){
-//             stage("Deploy ${deploymentDirectory}") {
-//                 println "Deploying Stack:- ${deploymentDirectory}..."
-//                 String[] cloudformationLocation = []
-//                 switch(product) {
-//                     case "apim":
-//                         cloudformationLocation = ["${WORKSPACE}/aws-apim/apim/Minimum-HA/apim.yaml"]
-//                         break;
-//                     case "is":
-//                         // The deployment is done in the indexed order
-//                         cloudformationLocation = ["${WORKSPACE}/aws-is/is/Minimum-HA/identity.yaml", "${WORKSPACE}/aws-is/is-samples/test-is-samples.yml"]
-//                         break;
-//                     case "ei":
-//                         cloudformationLocation = ["${WORKSPACE}/aws-ei/integrator/Minimum-HA/integrator-ha.yaml"]
-//                         break;
-//                     case "esb":
-//                         cloudformationLocation = ["${WORKSPACE}/aws-esb/esb/Minimum-HA/esb-ha.yaml"]
-//                         break;
-//                     case "mi":
-//                         cloudformationLocation = ["${WORKSPACE}/aws-mi/micro-integrator.yaml"]
-//                         break;
-//                     case "ob":
-//                         cloudformationLocation = ["${WORKSPACE}/aws-ob/obam-with-obkm.yaml"]
-//                         break;
-//                     default:
-//                         println("Product name is incorrect! Existing the execution");
-//                         currentBuild.result = 'ABORTED'
-//                 }
+def create_build_jobs(deploymentDirectory){
+    return{
+        stage("${deploymentDirectory}"){
+            stage("Deploy ${deploymentDirectory}") {
+                println "Deploying Stack:- ${deploymentDirectory}..."
+                String[] cloudformationLocation = []
+                switch(product) {
+                    case "apim":
+                        cloudformationLocation = ["${WORKSPACE}/aws-apim/apim/Minimum-HA/apim.yaml"]
+                        break;
+                    case "is":
+                        // The deployment is done in the indexed order
+                        cloudformationLocation = ["${WORKSPACE}/aws-is/is/Minimum-HA/identity.yaml", "${WORKSPACE}/aws-is/is-samples/test-is-samples.yml"]
+                        break;
+                    case "ei":
+                        cloudformationLocation = ["${WORKSPACE}/aws-ei/integrator/Minimum-HA/integrator-ha.yaml"]
+                        break;
+                    case "esb":
+                        cloudformationLocation = ["${WORKSPACE}/aws-esb/esb/Minimum-HA/esb-ha.yaml"]
+                        break;
+                    case "mi":
+                        cloudformationLocation = ["${WORKSPACE}/aws-mi/micro-integrator.yaml"]
+                        break;
+                    case "ob":
+                        cloudformationLocation = ["${WORKSPACE}/aws-ob/obam-with-obkm.yaml"]
+                        break;
+                    default:
+                        println("Product name is incorrect! Existing the execution");
+                        currentBuild.result = 'ABORTED'
+                }
 //                 sh'''
 //                     ./scripts/deployment-handler.sh '''+deploymentDirectory+''' '''+cloudformationLocation+''' 
 //                 '''
@@ -214,11 +212,11 @@ stages {
 //                             ./scripts/post-actions.sh '''+deploymentDirectory+'''
 //                         '''
 //                     }
-//                 }
-//             }
-//         }
-//     }
-// }
+                }
+            }
+        }
+    }
+}
 
 // def sendEmail(deploymentDirectories, updateType) {
 //     def deployments = ""
