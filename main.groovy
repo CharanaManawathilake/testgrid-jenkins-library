@@ -125,28 +125,30 @@ stages {
             }
         }
     }
-    // stage('Deploying Testing and Logs Uploading') {
-    //     steps {
-    //         script {
-    //             println "Creating deployments for the following combinations!"
-    //             def deployment_path = "${WORKSPACE}/deployment"
-    //             def command = '''
-    //                 ls -l ${WORKSPACE}/deployment | grep -E "^d" | awk '{print $9}'
-    //             '''
-    //             def procDirList = sh(returnStdout: true, script: command).trim().split("\\r?\\n")
-    //             for (procDir in procDirList){
-    //                 deploymentDirectories << procDir
-    //             }
-    //             def build_jobs = [:]
+    stage('Deploying Testing and Logs Uploading') {
+        steps {
+            script {
+                println "Creating deployments for the following combinations!"
+                def deployment_path = "${WORKSPACE}/deployment"
+                def command = '''
+                    ls -l ${WORKSPACE}/deployment | grep -E "^d" | awk '{print $9}'
+                '''
+                def procDirList = sh(returnStdout: true, script: command).trim().split("\\r?\\n")
+                for (procDir in procDirList){
+                    deploymentDirectories << procDir
+                }
+                def build_jobs = [:]
+
+                println deploymentDirectories
     //             for (deploymentDirectory in deploymentDirectories){
     //                 println deploymentDirectory
     //                 build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
     //             }
 
     //             parallel build_jobs
-    //         }
-    //     }
-    // }
+            }
+        }
+    }
 }
 // post {
 //     always {
