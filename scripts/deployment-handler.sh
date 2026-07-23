@@ -124,8 +124,8 @@ function addCommonVariables(){
 function main(){
     changeCommonLogPath
     cloudformationValidation
-    cloudformationDeployment
-    addCommonVariables
+    # cloudformationDeployment
+    # addCommonVariables
 }
 
 main
