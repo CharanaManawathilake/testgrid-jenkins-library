@@ -198,9 +198,9 @@ def create_build_jobs(deploymentDirectory){
                         println("Product name is incorrect! Existing the execution");
                         currentBuild.result = 'ABORTED'
                 }
-//                 sh'''
-//                     ./scripts/deployment-handler.sh '''+deploymentDirectory+''' '''+cloudformationLocation+''' 
-//                 '''
+                sh'''
+                    ./scripts/deployment-handler.sh '''+deploymentDirectory+''' '''+cloudformationLocation+''' 
+                '''
 //                 stage("Testing ${deploymentDirectory}") {
 //                     println "Deployment testing..."
 //                     sh'''
