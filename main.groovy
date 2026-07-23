@@ -92,26 +92,26 @@ stages {
                         ./scripts/write-parameter-file.sh "TESTGRID_EMAIL_PASSWORD" ${testgridEmailPassword} "${WORKSPACE}/parameters/parameters.json"
                     '''
                 }
-                // withCredentials([usernamePassword(credentialsId: 'WSO2_GITHUB_TOKEN', usernameVariable: 'githubUserName', passwordVariable: 'githubPassword')]) 
-                // {
-                //     sh '''
-                //        echo "Writting Github Username to parameter file"
-                //         ./scripts/write-parameter-file.sh "GithubUserName" ${githubUserName} "${WORKSPACE}/parameters/parameters.json"
-                //         echo "Writting Github Password to parameter file"
-                //         ./scripts/write-parameter-file.sh "GithubPassword" ${githubPassword} "${WORKSPACE}/parameters/parameters.json"
-                //     '''
-                // }
-                // sh '''
-                //     echo --- Adding common parameters to parameter file! ---
-                //     echo "Writting product name to parameter file"
-                //     ./scripts/write-parameter-file.sh "Product" ${product} "${WORKSPACE}/parameters/parameters.json"
-                //     echo "Writting product version to parameter file"
-                //     ./scripts/write-parameter-file.sh "ProductVersion" ${product_version} "${WORKSPACE}/parameters/parameters.json"
-                //     echo "Writting product deployment region to parameter file"
-                //     ./scripts/write-parameter-file.sh "Region" ${product_deployment_region} "${WORKSPACE}/parameters/parameters.json"
-                //     echo "Writing custom URL to parameter file"
-                //     ./scripts/write-parameter-file.sh "CustomURL" ${custom_url} "${WORKSPACE}/parameters/parameters.json"
-                // '''
+                withCredentials([usernamePassword(credentialsId: 'WSO2_GITHUB_TOKEN', usernameVariable: 'githubUserName', passwordVariable: 'githubPassword')]) 
+                {
+                    sh '''
+                       echo "Writting Github Username to parameter file"
+                        ./scripts/write-parameter-file.sh "GithubUserName" ${githubUserName} "${WORKSPACE}/parameters/parameters.json"
+                        echo "Writting Github Password to parameter file"
+                        ./scripts/write-parameter-file.sh "GithubPassword" ${githubPassword} "${WORKSPACE}/parameters/parameters.json"
+                    '''
+                }
+                sh '''
+                    echo --- Adding common parameters to parameter file! ---
+                    echo "Writting product name to parameter file"
+                    ./scripts/write-parameter-file.sh "Product" ${product} "${WORKSPACE}/parameters/parameters.json"
+                    echo "Writting product version to parameter file"
+                    ./scripts/write-parameter-file.sh "ProductVersion" ${product_version} "${WORKSPACE}/parameters/parameters.json"
+                    echo "Writting product deployment region to parameter file"
+                    ./scripts/write-parameter-file.sh "Region" ${product_deployment_region} "${WORKSPACE}/parameters/parameters.json"
+                    echo "Writing custom URL to parameter file"
+                    ./scripts/write-parameter-file.sh "CustomURL" ${custom_url} "${WORKSPACE}/parameters/parameters.json"
+                '''
                 // //Generate S3 Log output path
                 // s3BuildLogPath = "${s3BucketName}/artifacts/jobs/${s3PathConstructor}/${product}-${product_version}/build-${BUILD_NUMBER}"
                 // println "Your Logs will be uploaded to: s3://"+s3BuildLogPath
