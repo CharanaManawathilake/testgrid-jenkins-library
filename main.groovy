@@ -143,7 +143,7 @@ stages {
                     build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
                 }
 
-    //             parallel build_jobs
+                parallel build_jobs
             }
         }
     }
