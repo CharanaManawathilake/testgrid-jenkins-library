@@ -125,202 +125,202 @@ stages {
             }
         }
     }
-    stage('Deploying Testing and Logs Uploading') {
-        steps {
-            script {
-                println "Creating deployments for the following combinations!"
-                def deployment_path = "${WORKSPACE}/deployment"
-                def command = '''
-                    ls -l ${WORKSPACE}/deployment | grep -E "^d" | awk '{print $9}'
-                '''
-                def procDirList = sh(returnStdout: true, script: command).trim().split("\\r?\\n")
-                for (procDir in procDirList){
-                    deploymentDirectories << procDir
-                }
-                def build_jobs = [:]
-                for (deploymentDirectory in deploymentDirectories){
-                    println deploymentDirectory
-                    build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
-                }
+    // stage('Deploying Testing and Logs Uploading') {
+    //     steps {
+    //         script {
+    //             println "Creating deployments for the following combinations!"
+    //             def deployment_path = "${WORKSPACE}/deployment"
+    //             def command = '''
+    //                 ls -l ${WORKSPACE}/deployment | grep -E "^d" | awk '{print $9}'
+    //             '''
+    //             def procDirList = sh(returnStdout: true, script: command).trim().split("\\r?\\n")
+    //             for (procDir in procDirList){
+    //                 deploymentDirectories << procDir
+    //             }
+    //             def build_jobs = [:]
+    //             for (deploymentDirectory in deploymentDirectories){
+    //                 println deploymentDirectory
+    //                 build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
+    //             }
 
-                parallel build_jobs
-            }
-        }
-    }
+    //             parallel build_jobs
+    //         }
+    //     }
+    // }
 }
-post {
-    always {
-        sh '''
-            echo "Arranging the log files!"
-            parameters_directory="${WORKSPACE}/parameters/parameters.json"
+// post {
+//     always {
+//         sh '''
+//             echo "Arranging the log files!"
+//             parameters_directory="${WORKSPACE}/parameters/parameters.json"
 
-            localLogDir="build-${BUILD_NUMBER}"
-            mkdir -p ${localLogDir}
-            aws s3 cp s3://'''+s3BuildLogPath+'''/ ${localLogDir} --recursive --quiet
-            echo "Job is completed... Deleting the workspace directories!"
-        '''
-        archiveArtifacts artifacts: "build-${env.BUILD_NUMBER}/**/*.*", fingerprint: true
-        script {
-            sendEmail(deploymentDirectories, updateType)
-        }
-        cleanWs deleteDirs: true, notFailBuild: true
-    }
-}
-}
-
-def create_build_jobs(deploymentDirectory){
-    return{
-        stage("${deploymentDirectory}"){
-            stage("Deploy ${deploymentDirectory}") {
-                println "Deploying Stack:- ${deploymentDirectory}..."
-                String[] cloudformationLocation = []
-                switch(product) {
-                    case "apim":
-                        cloudformationLocation = ["${WORKSPACE}/aws-apim/apim/Minimum-HA/apim.yaml"]
-                        break;
-                    case "is":
-                        // The deployment is done in the indexed order
-                        cloudformationLocation = ["${WORKSPACE}/aws-is/is/Minimum-HA/identity.yaml", "${WORKSPACE}/aws-is/is-samples/test-is-samples.yml"]
-                        break;
-                    case "ei":
-                        cloudformationLocation = ["${WORKSPACE}/aws-ei/integrator/Minimum-HA/integrator-ha.yaml"]
-                        break;
-                    case "esb":
-                        cloudformationLocation = ["${WORKSPACE}/aws-esb/esb/Minimum-HA/esb-ha.yaml"]
-                        break;
-                    case "mi":
-                        cloudformationLocation = ["${WORKSPACE}/aws-mi/micro-integrator.yaml"]
-                        break;
-                    case "ob":
-                        cloudformationLocation = ["${WORKSPACE}/aws-ob/obam-with-obkm.yaml"]
-                        break;
-                    default:
-                        println("Product name is incorrect! Existing the execution");
-                        currentBuild.result = 'ABORTED'
-                }
-                sh'''
-                    ./scripts/deployment-handler.sh '''+deploymentDirectory+''' '''+cloudformationLocation+''' 
-                '''
-                stage("Testing ${deploymentDirectory}") {
-                    println "Deployment testing..."
-                    sh'''
-                        ./scripts/test-deployment.sh '''+deploymentDirectory+''' ${product_repository} ${product_test_branch} ${product_test_script}
-                    '''
-                    stage("Uploading results to ${deploymentDirectory}") {
-                        println "Upoading logs..."
-                        sh'''
-                            ./scripts/post-actions.sh '''+deploymentDirectory+'''
-                        '''
-                    }
-                }
-            }
-        }
-    }
+//             localLogDir="build-${BUILD_NUMBER}"
+//             mkdir -p ${localLogDir}
+//             aws s3 cp s3://'''+s3BuildLogPath+'''/ ${localLogDir} --recursive --quiet
+//             echo "Job is completed... Deleting the workspace directories!"
+//         '''
+//         archiveArtifacts artifacts: "build-${env.BUILD_NUMBER}/**/*.*", fingerprint: true
+//         script {
+//             sendEmail(deploymentDirectories, updateType)
+//         }
+//         cleanWs deleteDirs: true, notFailBuild: true
+//     }
+// }
 }
 
-def sendEmail(deploymentDirectories, updateType) {
-    def deployments = ""
-    for (deploymentDirectory in deploymentDirectories){
-        deployments = deployments + deploymentDirectory + "<br>"
-    }
+// def create_build_jobs(deploymentDirectory){
+//     return{
+//         stage("${deploymentDirectory}"){
+//             stage("Deploy ${deploymentDirectory}") {
+//                 println "Deploying Stack:- ${deploymentDirectory}..."
+//                 String[] cloudformationLocation = []
+//                 switch(product) {
+//                     case "apim":
+//                         cloudformationLocation = ["${WORKSPACE}/aws-apim/apim/Minimum-HA/apim.yaml"]
+//                         break;
+//                     case "is":
+//                         // The deployment is done in the indexed order
+//                         cloudformationLocation = ["${WORKSPACE}/aws-is/is/Minimum-HA/identity.yaml", "${WORKSPACE}/aws-is/is-samples/test-is-samples.yml"]
+//                         break;
+//                     case "ei":
+//                         cloudformationLocation = ["${WORKSPACE}/aws-ei/integrator/Minimum-HA/integrator-ha.yaml"]
+//                         break;
+//                     case "esb":
+//                         cloudformationLocation = ["${WORKSPACE}/aws-esb/esb/Minimum-HA/esb-ha.yaml"]
+//                         break;
+//                     case "mi":
+//                         cloudformationLocation = ["${WORKSPACE}/aws-mi/micro-integrator.yaml"]
+//                         break;
+//                     case "ob":
+//                         cloudformationLocation = ["${WORKSPACE}/aws-ob/obam-with-obkm.yaml"]
+//                         break;
+//                     default:
+//                         println("Product name is incorrect! Existing the execution");
+//                         currentBuild.result = 'ABORTED'
+//                 }
+//                 sh'''
+//                     ./scripts/deployment-handler.sh '''+deploymentDirectory+''' '''+cloudformationLocation+''' 
+//                 '''
+//                 stage("Testing ${deploymentDirectory}") {
+//                     println "Deployment testing..."
+//                     sh'''
+//                         ./scripts/test-deployment.sh '''+deploymentDirectory+''' ${product_repository} ${product_test_branch} ${product_test_script}
+//                     '''
+//                     stage("Uploading results to ${deploymentDirectory}") {
+//                         println "Upoading logs..."
+//                         sh'''
+//                             ./scripts/post-actions.sh '''+deploymentDirectory+'''
+//                         '''
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
+
+// def sendEmail(deploymentDirectories, updateType) {
+//     def deployments = ""
+//     for (deploymentDirectory in deploymentDirectories){
+//         deployments = deployments + deploymentDirectory + "<br>"
+//     }
     
-    if (currentBuild.currentResult.equals("SUCCESS")){
-        headerColour = "#05B349"
-    }else{
-        headerColour = "#ff0000"
-    }
-    content="""
-        <div style="padding-left: 10px">
-            <div style="height: 4px; background-image: linear-gradient(to right, orange, black);">
-        </div>
-        <table border="0" cellspacing="0" cellpadding="0" valign='top'>
-            <td>
-                <h1>Scenario test results</span></h1>
-            </td>
-            <td>
-                <img src="http://cdn.wso2.com/wso2/newsletter/images/nl-2017/nl2017-wso2-logo-wb.png"/>
-            </td>
-        </table>
-        <div style="margin: auto; background-color: #ffffff;">
-            <p style="height:10px;font-family: Lucida Grande;font-size: 20px;">
-            <font color="black">
-                <b> Testgrid job status </b>
-            </font>
-            </p>
-        <table cellspacing="0" cellpadding="0" border="2" bgcolor="#f0f0f0" width="80%">
-        <colgroup>
-            <col width="150"/>
-            <col width="150"/>
-        </colgroup>
-        <tr style="border: 1px solid black; font-size: 16px;">
-            <th bgcolor="${headerColour}" style="padding-top: 3px; padding-bottom: 3px">Test Specification</th>
-            <th bgcolor="${headerColour}" style="black">Test Values</th>
-        </tr>
-        <tr>
-            <td>Product</td>
-            <td>${product.toUpperCase()}</td>
-        </tr>
-        <tr>
-            <td>Version</td>
-            <td>${product_version}</td>
-        </tr>
-        <tr>
-            <td>Used WUM as Update</td>
-            <td>${use_wum}</td>
-        </tr>
-        <tr>
-            <td>Used Staging as Update</td>
-            <td>${use_staging}</td>
-        </tr>
-        <tr>
-            <td>Operating Systems</td>
-            <td>${os_list}</td>
-        </tr>
-        <tr>
-            <td>Databases</td>
-            <td>${database_list}</td>
-        </tr>
-        <tr>
-            <td>JDKs</td>
-            <td>${jdk_list}</td>
-        </tr>
-        <tr>
-            <td>Product Test Repository</td>
-            <td>${product_repository}</td>
-        </tr>
-        <tr>
-            <td>Product Test Repository Branch</td>
-            <td>${product_test_branch}</td>
-        </tr>
-        <tr>
-            <td>Product Depolyment Combinations</td>
-            <td>${deployments}</td>
-        </tr>
-        </table>
-        <br/>
-        <br/>
-        <p style="height:10px;font-family:Lucida Grande;font-size: 20px;">
-            <font color="black">
-            <b>Build Info:</b>
-            <small><a href="${BUILD_URL}">${BUILD_URL}</a></small>
-            </font>
-        </p>
-        <br/>
-        <br/>
-        <br/>
-        <em>Tested by WSO2 Jenkins TestGrid Pipeline.</em>
-        </div>
-        """
-    subject="[TestGrid][${updateType.toUpperCase()}][${product.toUpperCase()}:${product_version}][SCE]-Build ${currentBuild.currentResult}-#${env.BUILD_NUMBER}"
-    senderEmailGroup=""
-    if(product.equals("apim") || product.equals("ei") || product.equals("esb") || product.equals("mi")){
-        senderEmailGroup = "integration-builder@wso2.com"
-    }else if(product.equals("is")) {
-        senderEmailGroup = "iam-builder@wso2.com"
-    }else if(product.equals("ob")) {
-        senderEmailGroup = "bfsi-group@wso2.com"
-    }
-    emailext(to: "${senderEmailGroup},builder@wso2.org",
-            subject: subject,
-            body: content, mimeType: 'text/html')
-}
+//     if (currentBuild.currentResult.equals("SUCCESS")){
+//         headerColour = "#05B349"
+//     }else{
+//         headerColour = "#ff0000"
+//     }
+//     content="""
+//         <div style="padding-left: 10px">
+//             <div style="height: 4px; background-image: linear-gradient(to right, orange, black);">
+//         </div>
+//         <table border="0" cellspacing="0" cellpadding="0" valign='top'>
+//             <td>
+//                 <h1>Scenario test results</span></h1>
+//             </td>
+//             <td>
+//                 <img src="http://cdn.wso2.com/wso2/newsletter/images/nl-2017/nl2017-wso2-logo-wb.png"/>
+//             </td>
+//         </table>
+//         <div style="margin: auto; background-color: #ffffff;">
+//             <p style="height:10px;font-family: Lucida Grande;font-size: 20px;">
+//             <font color="black">
+//                 <b> Testgrid job status </b>
+//             </font>
+//             </p>
+//         <table cellspacing="0" cellpadding="0" border="2" bgcolor="#f0f0f0" width="80%">
+//         <colgroup>
+//             <col width="150"/>
+//             <col width="150"/>
+//         </colgroup>
+//         <tr style="border: 1px solid black; font-size: 16px;">
+//             <th bgcolor="${headerColour}" style="padding-top: 3px; padding-bottom: 3px">Test Specification</th>
+//             <th bgcolor="${headerColour}" style="black">Test Values</th>
+//         </tr>
+//         <tr>
+//             <td>Product</td>
+//             <td>${product.toUpperCase()}</td>
+//         </tr>
+//         <tr>
+//             <td>Version</td>
+//             <td>${product_version}</td>
+//         </tr>
+//         <tr>
+//             <td>Used WUM as Update</td>
+//             <td>${use_wum}</td>
+//         </tr>
+//         <tr>
+//             <td>Used Staging as Update</td>
+//             <td>${use_staging}</td>
+//         </tr>
+//         <tr>
+//             <td>Operating Systems</td>
+//             <td>${os_list}</td>
+//         </tr>
+//         <tr>
+//             <td>Databases</td>
+//             <td>${database_list}</td>
+//         </tr>
+//         <tr>
+//             <td>JDKs</td>
+//             <td>${jdk_list}</td>
+//         </tr>
+//         <tr>
+//             <td>Product Test Repository</td>
+//             <td>${product_repository}</td>
+//         </tr>
+//         <tr>
+//             <td>Product Test Repository Branch</td>
+//             <td>${product_test_branch}</td>
+//         </tr>
+//         <tr>
+//             <td>Product Depolyment Combinations</td>
+//             <td>${deployments}</td>
+//         </tr>
+//         </table>
+//         <br/>
+//         <br/>
+//         <p style="height:10px;font-family:Lucida Grande;font-size: 20px;">
+//             <font color="black">
+//             <b>Build Info:</b>
+//             <small><a href="${BUILD_URL}">${BUILD_URL}</a></small>
+//             </font>
+//         </p>
+//         <br/>
+//         <br/>
+//         <br/>
+//         <em>Tested by WSO2 Jenkins TestGrid Pipeline.</em>
+//         </div>
+//         """
+//     subject="[TestGrid][${updateType.toUpperCase()}][${product.toUpperCase()}:${product_version}][SCE]-Build ${currentBuild.currentResult}-#${env.BUILD_NUMBER}"
+//     senderEmailGroup=""
+//     if(product.equals("apim") || product.equals("ei") || product.equals("esb") || product.equals("mi")){
+//         senderEmailGroup = "integration-builder@wso2.com"
+//     }else if(product.equals("is")) {
+//         senderEmailGroup = "iam-builder@wso2.com"
+//     }else if(product.equals("ob")) {
+//         senderEmailGroup = "bfsi-group@wso2.com"
+//     }
+//     emailext(to: "${senderEmailGroup},builder@wso2.org",
+//             subject: subject,
+//             body: content, mimeType: 'text/html')
+// }
