@@ -67,18 +67,17 @@ function changeCommonLogPath(){
 function cloudformationDeployment(){
     log_info "Executing product specific deployment..."
     log_info "Running ${product} deployment.."
-    log_info "REGION IS : ${region}"
-    # if [[ ${testType} == "intg"  ]];
-    # then
-    #     if [[ ${product} == "wso2am" ]];
-    #     then
-    #         bash ${currentScript}/apim/intg/intg-deploy.sh ${deploymentName} ${cloudformationFileLocations[@]}
-    #     else
-    #         bash ${currentScript}/${product}/intg/intg-deploy.sh ${deploymentName} ${cloudformationFileLocations[@]}
-    #     fi
-    # else
-    #     bash ${currentScript}/${product}/deploy.sh ${deploymentName} ${cloudformationFileLocations[@]}
-    # fi
+    if [[ ${testType} == "intg"  ]];
+    then
+        if [[ ${product} == "wso2am" ]];
+        then
+            bash ${currentScript}/apim/intg/intg-deploy.sh ${deploymentName} ${cloudformationFileLocations[@]}
+        else
+            bash ${currentScript}/${product}/intg/intg-deploy.sh ${deploymentName} ${cloudformationFileLocations[@]}
+        fi
+    else
+        bash ${currentScript}/${product}/deploy.sh ${deploymentName} ${cloudformationFileLocations[@]}
+    fi
     if [[ $? != 0 ]];
     then
         # If deployment fails the handler should also fail
@@ -126,7 +125,7 @@ function main(){
     changeCommonLogPath
     cloudformationValidation
     cloudformationDeployment
-    # addCommonVariables
+    addCommonVariables
 }
 
 main
