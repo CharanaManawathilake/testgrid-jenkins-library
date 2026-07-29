@@ -9,7 +9,7 @@
         "DB": "",
         "Product": "",
         "ProductVersion": "",
-        "KeyPairName": "deployment-prod",
+        "KeyPairName": "jenkins-key-charana",
         "WSO2InstanceType": "t2.medium",
         "CertificateName": "wso2_testgrid",
         "DBUsername": "tgdbuser",
