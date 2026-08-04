@@ -201,18 +201,18 @@ def create_build_jobs(deploymentDirectory){
                 sh'''
                     ./scripts/deployment-handler.sh '''+deploymentDirectory+''' '''+cloudformationLocation+''' 
                 '''
-//                 stage("Testing ${deploymentDirectory}") {
-//                     println "Deployment testing..."
+                stage("Testing ${deploymentDirectory}") {
+                    println "Deployment testing..."
 //                     sh'''
 //                         ./scripts/test-deployment.sh '''+deploymentDirectory+''' ${product_repository} ${product_test_branch} ${product_test_script}
 //                     '''
-//                     stage("Uploading results to ${deploymentDirectory}") {
-//                         println "Upoading logs..."
-//                         sh'''
-//                             ./scripts/post-actions.sh '''+deploymentDirectory+'''
-//                         '''
-//                     }
-                // }
+                    stage("Uploading results to ${deploymentDirectory}") {
+                        println "Upoading logs..."
+                        sh'''
+                            ./scripts/post-actions.sh '''+deploymentDirectory+'''
+                        '''
+                    }
+                }
             }
         }
     }
