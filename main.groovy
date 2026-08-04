@@ -138,12 +138,12 @@ stages {
                     deploymentDirectories << procDir
                 }
                 def build_jobs = [:]
-                for (deploymentDirectory in deploymentDirectories){
-                    println deploymentDirectory
-                    build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
-                }
+                // for (deploymentDirectory in deploymentDirectories){
+                //     println deploymentDirectory
+                //     build_jobs["${deploymentDirectory}"] = create_build_jobs(deploymentDirectory)
+                // }
 
-                parallel build_jobs
+                // parallel build_jobs
             }
         }
     }
