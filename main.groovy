@@ -26,7 +26,7 @@ def s3BuildLogPath = ""
 def s3PathConstructor = ""
 
 pipeline {
-agent {label 'test-pipeline-agent'}
+agent {label 'dummy-node'}
 stages {
     stage('Clone CFN repo') {
         steps {
