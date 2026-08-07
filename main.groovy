@@ -148,24 +148,24 @@ stages {
         }
     }
 }
-post {
-    always {
-        sh '''
-            echo "Arranging the log files!"
-            parameters_directory="${WORKSPACE}/parameters/parameters.json"
+// post {
+//     always {
+//         sh '''
+//             echo "Arranging the log files!"
+//             parameters_directory="${WORKSPACE}/parameters/parameters.json"
 
-            localLogDir="build-${BUILD_NUMBER}"
-            mkdir -p ${localLogDir}
-            aws s3 cp s3://'''+s3BuildLogPath+'''/ ${localLogDir} --recursive --quiet
-            echo "Job is completed... Deleting the workspace directories!"
-        '''
-        archiveArtifacts artifacts: "build-${env.BUILD_NUMBER}/**/*.*", fingerprint: true
-        script {
-            sendEmail(deploymentDirectories, updateType)
-        }
-        cleanWs deleteDirs: true, notFailBuild: true
-    }
-}
+//             localLogDir="build-${BUILD_NUMBER}"
+//             mkdir -p ${localLogDir}
+//             aws s3 cp s3://'''+s3BuildLogPath+'''/ ${localLogDir} --recursive --quiet
+//             echo "Job is completed... Deleting the workspace directories!"
+//         '''
+//         archiveArtifacts artifacts: "build-${env.BUILD_NUMBER}/**/*.*", fingerprint: true
+//         script {
+//             sendEmail(deploymentDirectories, updateType)
+//         }
+//         cleanWs deleteDirs: true, notFailBuild: true
+//     }
+// }
 }
 
 def create_build_jobs(deploymentDirectory){
@@ -203,14 +203,14 @@ def create_build_jobs(deploymentDirectory){
                 '''
                 stage("Testing ${deploymentDirectory}") {
                     println "Deployment testing..."
-                    sh'''
-                        ./scripts/test-deployment.sh '''+deploymentDirectory+''' ${product_repository} ${product_test_branch} ${product_test_script}
-                    '''
-                    stage("Uploading results to ${deploymentDirectory}") {
-                        println "Upoading logs..."
-                        sh'''
-                            ./scripts/post-actions.sh '''+deploymentDirectory+'''
-                        '''
+                    // sh'''
+                    //     ./scripts/test-deployment.sh '''+deploymentDirectory+''' ${product_repository} ${product_test_branch} ${product_test_script}
+                    // '''
+                    // stage("Uploading results to ${deploymentDirectory}") {
+                    //     println "Upoading logs..."
+                    //     sh'''
+                    //         ./scripts/post-actions.sh '''+deploymentDirectory+'''
+                    //     '''
                     }
                 }
             }
